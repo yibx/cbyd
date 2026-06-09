@@ -1,0 +1,49 @@
+
+1、库文件
+
+mysqlclient
+
+2、ubuntu24.04 安装方式
+
+sudo apt-get install libmysqlclient-dev
+
+3、cmake中的使用方法
+
+cmake_minimum_required(VERSION 3.10)
+project(mysql_project)
+
+find_package(MySQL REQUIRED)
+include_directories(${MYSQL_INCLUDE_DIR})
+
+add_executable(mysql_app main.cpp mysql_client.cpp)
+target_link_libraries(mysql_app ${MYSQL_LIBRARIES})
+
+4、c++测试代码
+
+int main() {
+    MySQLClient mysql;
+    
+    // 数据库连接
+    if (!mysql.connect("localhost", "user", "password", "database")) {
+        std::cerr << "Connection failed: " << mysql.getLastError() << std::endl;
+        return 1;
+    }
+    
+    // 数据插入
+    std::string insert_query = "INSERT INTO table_name (column1, column2) VALUES ('value1', 'value2')";
+    if (!mysql.insert(insert_query)) {
+        std::cerr << "Insert failed: " << mysql.getLastError() << std::endl;
+    }
+    
+    // 数据查询
+    std::string select_query = "SELECT * FROM table_name";
+    auto results = mysql.select(select_query);
+    for (const auto& row : results) {
+        for (const auto& field : row) {
+            std::cout << field << " ";
+        }
+        std::cout << std::endl;
+    }
+    
+    return 0;
+}
