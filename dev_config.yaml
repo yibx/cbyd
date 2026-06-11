@@ -1,0 +1,14 @@
+lidarA:
+  name: "Lidar_A_01"
+  dev_ip: "192.168.0.200"
+  dev_port: 2368
+  data_port: 2369
+  local_ip: "192.168.0.16"
+
+lidarB:
+  name: "Lidar_B_01"
+  dev_ip: "192.168.0.201"
+  dev_port: 2370
+  data_port: 2371
+  local_ip: "192.168.0.16"
+

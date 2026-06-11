@@ -69,25 +69,21 @@ void getEulerAngles(const Eigen::Matrix3f& R, float& roll, float& pitch, float& 
 SixDofCalculator::SixDofCalculator(LockFreeRingQueue<FusedPointCloud>* rq_fuse, LockFreeRingQueue<SixDofResult>* rq_sixdof)
     : rq_fuse_(rq_fuse), rq_sixdof_(rq_sixdof), pool_running_(true)
 {
-
+#if 0
     // ==============================================
     // 自动构建船舶坐标系
     // ==============================================
-    //cout << "===== 三点构建船舶坐标系 =====" << endl;
+    cout << "===== 三点构建船舶坐标系 =====" << endl;
+     雷达坐标系下的 3 个船体特征点
+    Point3d p1_radar(10.0, 5.0, 0.0);   // 船艏
+    Point3d p2_radar(20.0, 5.0, 0.0);   // 船舯
+    Point3d p3_radar(10.0, 10.0, 0.0);  // 船左舷
+    bool build_ok = frame_builder_.buildShipFrameFrom3Points(p1_radar, p2_radar, p3_radar);
+    if (!build_ok) {
+        cout << "建系失败！三点共线或重合" << endl;
+    }
+    lr_sr_ = frame_builder_.getShipRotationMatrix();
 
-    // 雷达坐标系下的 3 个船体特征点
-    //Point3d p1_radar(10.0, 5.0, 0.0);   // 船艏
-    //Point3d p2_radar(20.0, 5.0, 0.0);   // 船舯
-    //Point3d p3_radar(10.0, 10.0, 0.0);  // 船左舷
-
-    //bool build_ok = frame_builder_.buildShipFrameFrom3Points(p1_radar, p2_radar, p3_radar);
-
-    //if (!build_ok) {
-    //    cout << "建系失败！三点共线或重合" << endl;
-    //}
-	
-    //lr_sr_ = frame_builder_.getShipRotationMatrix();
-#if 0
     // 把【虚拟质心】从雷达坐标 → 船舶坐标
     Point3d virtual_centroid_radar(15.0, 7.0, 0.0);  // 雷达下质心
     Point3d centroid_ship = frame_builder_.radarToShip(virtual_centroid_radar);
@@ -109,6 +105,10 @@ SixDofCalculator::SixDofCalculator(LockFreeRingQueue<FusedPointCloud>* rq_fuse, 
     double wharf_yaw = dock_checker_.calcWharfYawDegree();
     cout << "码头朝向角（固定）: " << wharf_yaw << " 度" << endl << endl;
 #endif
+    if (!loadRegParam("../reg_config.yaml", regCfg_)){
+        return;
+    }
+
     b_set_base_ = false;
     // 飞腾D2000 8核推荐：6个工作线程
     int thread_num = 6;
@@ -170,27 +170,28 @@ void SixDofCalculator::stop() {
 void SixDofCalculator::calcLoop() {
     while (is_running_) {
         FusedPointCloud c;
-        if (rq_fuse_->dequeue(c)) {
-	    {
-            	lock_guard<mutex> lock(task_mtx_);
-	    	if(tasks_.size() >= 30) {
-	    		tasks_.pop();
-	    	}
-            	tasks_.emplace([this, c = move(c)]() {
-                	auto res = calculateSixDof(c);
-			int retry = 0;
-			const int max_retry = 10;
-                	while (!rq_sixdof_->enqueue(res) && retry < max_retry) {
-                    		this_thread::sleep_for(chrono::milliseconds(3 * (1 << retry)));
-				retry++;
-                	}
-			if (retry >= max_retry) {
-				cerr << "六自由度结果入队失败（重试" << max_retry << "次)，丢弃结果" << std::endl;
-			}
-            	});
-            	cv_.notify_one();
-	    }
-	    this_thread::sleep_for(chrono::milliseconds(10));
+        if (rq_fuse_->dequeue(c)) 
+        {
+	        {
+                lock_guard<mutex> lock(task_mtx_);
+	        	if(tasks_.size() >= 30) {
+	        		tasks_.pop();
+	        	}
+                tasks_.emplace([this, c = move(c)]() {
+                    auto res = calculateSixDof(c);
+		    	    int retry = 0;
+		    	    const int max_retry = 10;
+                    while (!rq_sixdof_->enqueue(res) && retry < max_retry) {
+                    	this_thread::sleep_for(chrono::milliseconds(3 * (1 << retry)));
+		    		    retry++;
+                    }
+		    	    if (retry >= max_retry) {
+		    	    	cerr << "六自由度结果入队失败（重试" << max_retry << "次)，丢弃结果" << std::endl;
+		    	    }
+                });
+                cv_.notify_one();
+	        }
+	        this_thread::sleep_for(chrono::milliseconds(10));
         } else {
             this_thread::sleep_for(chrono::milliseconds(3));
         }
@@ -282,41 +283,43 @@ Eigen::Matrix4f fineRegistrationGICP(PointCloudT::Ptr& src, PointCloudT::Ptr& ds
 }
 */
 
-
-
-Eigen::Matrix4f coarseRegistration(PointCloudT::Ptr& src, PointCloudT::Ptr& dst)
+Eigen::Matrix4f coarseRegistration(PointCloudT::Ptr& src, PointCloudT::Ptr& dst, const RegParam& cfg)
 {
     if (src->empty() || dst->empty())
         return Eigen::Matrix4f::Identity();
 
-    // 降采样
+    const NdtParam& ndt_param = cfg.ndt;
+
+    // 降采样（使用配置参数）
     PointCloudT::Ptr src_down(new PointCloudT);
     PointCloudT::Ptr dst_down(new PointCloudT);
     pcl::VoxelGrid<PointT> vg;
-    vg.setLeafSize(0.1f, 0.1f, 0.1f);
-    vg.setInputCloud(src); vg.filter(*src_down);
-    vg.setInputCloud(dst); vg.filter(*dst_down);
+    vg.setLeafSize(ndt_param.voxel_x, ndt_param.voxel_y, ndt_param.voxel_z);
+    vg.setInputCloud(src);
+    vg.filter(*src_down);
+    vg.setInputCloud(dst);
+    vg.filter(*dst_down);
 
-    // =======================
-    // NDT 配置（小船专用）
-    // =======================
+    // NDT 配准
     pcl::NormalDistributionsTransform<PointT, PointT> ndt;
     ndt.setInputSource(src_down);
     ndt.setInputTarget(dst_down);
 
-    ndt.setMaximumIterations(30);
-    ndt.setTransformationEpsilon(1e-6);
-    ndt.setStepSize(0.1);
-    ndt.setResolution(0.5f);  // 小船 0.5~0.8m 最佳
+    ndt.setMaximumIterations(ndt_param.max_iter);
+    ndt.setTransformationEpsilon(ndt_param.trans_eps);
+    ndt.setStepSize(ndt_param.step_size);
+    ndt.setResolution(ndt_param.resolution);
 
     Eigen::Matrix4f init_guess = Eigen::Matrix4f::Identity();
     PointCloudT::Ptr output(new PointCloudT);
     ndt.align(*output, init_guess);
 
-    cout << "NDT 分数: " << ndt.getFitnessScore() << endl;
+    float score = ndt.getFitnessScore();
+    std::cout << "NDT 分数: " << score << std::endl;
 
-    // 失败 → 退化为质心平移
-    if (!ndt.hasConverged() || ndt.getFitnessScore() > 1.5f) {
+    // 配准失败，使用质心平移兜底
+    if (!ndt.hasConverged() || score > ndt_param.fit_thresh)
+    {
         Eigen::Vector4f c1, c2;
         pcl::compute3DCentroid(*src_down, c1);
         pcl::compute3DCentroid(*dst_down, c2);
@@ -330,69 +333,65 @@ Eigen::Matrix4f coarseRegistration(PointCloudT::Ptr& src, PointCloudT::Ptr& dst)
     return ndt.getFinalTransformation();
 }
 
-// ==============================================
-// GICP 精配准
-// ==============================================
-
-Eigen::Matrix4f fineRegistrationGICP(PointCloudT::Ptr& src, PointCloudT::Ptr& dst, Eigen::Matrix4f init_trans)
+Eigen::Matrix4f fineRegistrationGICP(PointCloudT::Ptr& src, PointCloudT::Ptr& dst,
+                                      Eigen::Matrix4f init_trans, const RegParam& cfg)
 {
     if (src->empty() || dst->empty())
         return init_trans;
 
-    // 1. 轻量级降采样，去除噪声
+    const GicpParam& gicp_param = cfg.gicp;
+
+    // 轻量级降采样
     PointCloudT::Ptr src_filtered(new PointCloudT);
     PointCloudT::Ptr dst_filtered(new PointCloudT);
     pcl::VoxelGrid<PointT> vg;
-    vg.setLeafSize(0.05f, 0.05f, 0.05f); // 小船用更小的格子
-    vg.setInputCloud(src); vg.filter(*src_filtered);
-    vg.setInputCloud(dst); vg.filter(*dst_filtered);
+    vg.setLeafSize(gicp_param.voxel_x, gicp_param.voxel_y, gicp_param.voxel_z);
+    vg.setInputCloud(src);
+    vg.filter(*src_filtered);
+    vg.setInputCloud(dst);
+    vg.filter(*dst_filtered);
 
-    // 2. 初始化GICP
+    // GICP 初始化
     pcl::GeneralizedIterativeClosestPoint<PointT, PointT> gicp;
     gicp.setInputSource(src_filtered);
     gicp.setInputTarget(dst_filtered);
 
-    // 3. 关键参数设置
-
-    gicp.setUseReciprocalCorrespondences(true);
-    gicp.setMaxCorrespondenceDistance(0.3f); // 非常关键！必须小，防止匹配到背景
-    gicp.setMaximumIterations(150);          // 减少迭代，避免过拟合
-    gicp.setTransformationEpsilon(1e-6);
-    gicp.setEuclideanFitnessEpsilon(1e-6);
-    gicp.setRotationEpsilon(1e-3);           // 限制旋转，防止乱飘
-    gicp.setCorrespondenceRandomness(15);
+    gicp.setUseReciprocalCorrespondences(gicp_param.use_reciprocal);
+    gicp.setMaxCorrespondenceDistance(gicp_param.max_corr_dist);
+    gicp.setMaximumIterations(gicp_param.max_iter);
+    gicp.setTransformationEpsilon(gicp_param.trans_eps);
+    gicp.setEuclideanFitnessEpsilon(gicp_param.euclid_eps);
+    gicp.setRotationEpsilon(gicp_param.rot_eps);
+    gicp.setCorrespondenceRandomness(gicp_param.rand_num);
 
     PointCloudT::Ptr aligned(new PointCloudT);
     gicp.align(*aligned, init_trans);
 
-    float fitness = gicp.getFitnessScore(0.5f);
+    float fitness = gicp.getFitnessScore(gicp_param.score_radius);
     bool converged = gicp.hasConverged();
 
-    //std::cout << "\n======= GICP 结果 =======" << std::endl;
-    std::cout << "收敛: " << converged << " 分数: " << fitness << std::endl;
+    std::cout << "GICP 收敛: " << converged << " 分数: " << fitness << std::endl;
 
-    // 4. 失败保护：不重置为单位矩阵，保持上一帧姿态
-    if (!converged || fitness > 1.0f) {
+    // 配准不佳，保留上一帧姿态
+    if (!converged || fitness > gicp_param.fit_thresh)
+    {
         std::cout << "→ 配准效果不佳，保持上一帧姿态\n";
         return init_trans;
     }
 
-    //std::cout << "→ 配准成功！\n";
     return gicp.getFinalTransformation();
 }
-
-
 
 // 六自由度计算主函数
 SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     SixDofResult r;
     r.timestamp = c.timestamp;
-    r.tx = r.ty = r.tz = r.rx = r.ry = r.rz = 0.0f;
-    r.confidence = 0.0f;
+    r.tx = r.ty = r.tz = r.rx = r.ry = r.rz = 0.00f;
+    r.confidence = 0.00f;
 
     if (!fuse_pc_base_.cloud || fuse_pc_base_.cloud->empty()) {
         fuse_pc_base_ = c;
-        r.confidence = 1.0f;
+        r.confidence = 1.00f;
         return r;
     }
 
@@ -409,15 +408,14 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
         return r;
     }
 
-    Eigen::Matrix4f coarse_T = coarseRegistration(src, dst).cast<float>();
-    Eigen::Matrix4f fine_T = fineRegistrationGICP(src, dst, coarse_T).cast<float>();
+    Eigen::Matrix4f coarse_T = coarseRegistration(src, dst, regCfg_).cast<float>();
+    Eigen::Matrix4f fine_T = fineRegistrationGICP(src, dst, coarse_T, regCfg_).cast<float>();
 
     // 旋转矩阵 → 欧拉角 XYZ 顺序
     Eigen::Matrix3f R_r = fine_T.block<3, 3>(0, 0).cast<float>();
     Eigen::Vector3f t_r = fine_T.block<3, 1>(0, 3).cast<float>();
-
+#if 0
     Eigen::Matrix3f l_s = lr_sr_.block<3,3>(0,0).cast<float>();
-
     Eigen::Matrix3f ship_rot = l_s * R_r;
 
     float roll, pitch, yaw;
@@ -428,7 +426,6 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     t_r_last = t_r;
 
     Eigen::Vector3f ship_pos = l_s * delta_pos;
-
     r.rx = roll;
     r.ry = pitch;
     r.rz = yaw;
@@ -438,7 +435,19 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     r.tz = ship_pos[2] * 100;
 
     r.confidence = 0.95f;
+#endif
 
+    float roll, pitch, yaw;
+    getEulerAngles(R_r, roll, pitch, yaw);
+    r.rx = roll;
+    r.ry = pitch;
+    r.rz = yaw;
+	
+    r.tx = t_r.x();
+    r.ty = t_r.y();
+    r.tz = t_r.z();
+
+    std::cout << "r.rx:" << r.rx << ",r.ry:" << r.ry << ",r.rz:" << r.rz << ",r.tx:" << r.tx << ",r.ty:" << r.ty << ",r.tz:" << r.tz  <<  std::endl;
     if (b_set_base_) {
     	return r;
     }

@@ -7,33 +7,32 @@
 #include <atomic>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
+#include "config_loader.h"
 
 using PointT = pcl::PointXYZ;
 using PointCloudT = pcl::PointCloud<PointT>;
 
-// 真正的雷达点云结构（适配你的工程）
+
 struct RawPointCloud {
-    std::string radar_id;     // A 或 B
-    uint64_t timestamp;        // 纳秒时间戳
-    PointCloudT::Ptr cloud;   // 点云智能指针
+    std::string lidar_id;     
+    uint64_t timestamp;        
+    PointCloudT::Ptr cloud;   
 };
 
 class PointCloudAcquirer {
 public:
-    // 传入两个独立队列
+    
     PointCloudAcquirer(
         LockFreeRingQueue<RawPointCloud>* queueA,
-        LockFreeRingQueue<RawPointCloud>* queueB,
-        int port_dev,
-        int port_data
+        LockFreeRingQueue<RawPointCloud>* queueB
     );
 
     void start();
     void stop();
 
 private:
-    void acquireRadar1Loop();  // 雷达A独立线程
-    void acquireRadar2Loop();  // 雷达B独立线程
+    void acquireRadar1Loop();  
+    void acquireRadar2Loop();  
 
 private:
     LockFreeRingQueue<RawPointCloud>* queueA_;
@@ -44,6 +43,8 @@ private:
     std::thread thread_radar1_;
     std::thread thread_radar2_;
     std::atomic<bool> is_running_{false};
+
+    AllLidarConfigs lidarCfg_;
 };
 
 #endif

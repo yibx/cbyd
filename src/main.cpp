@@ -27,7 +27,7 @@ int main() {
     LockFreeRingQueue<FusedPointCloud> rq_fuse_cloud(100);
     LockFreeRingQueue<SixDofResult> rq_six_dof(100);
 
-    PointCloudAcquirer acquirer(&rq_cloudA, &rq_cloudB, 8001, 8002);
+    PointCloudAcquirer acquirer(&rq_cloudA, &rq_cloudB);
     PointCloudFuser fuser(&rq_cloudA, &rq_cloudB, &rq_fuse_cloud);
     SixDofCalculator calc(&rq_fuse_cloud, &rq_six_dof);
     ConcreteDataOutputter output(&rq_six_dof);

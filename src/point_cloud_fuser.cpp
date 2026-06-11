@@ -68,6 +68,7 @@ void PointCloudFuser::fuseLoop() {
 
                 // ====================== 【关键】对 fused 做深拷贝，避免共享指针
                 FusedPointCloud fused_deep;
+                fused_deep.lidar_id = fused.lidar_id;
                 fused_deep.timestamp = fused.timestamp;
                 fused_deep.cloud.reset(new PointCloudT(*fused.cloud)); // 深拷贝
                 fused_deep.valid_points = fused_deep.cloud->size();
@@ -110,6 +111,7 @@ void PointCloudFuser::fuseLoop() {
             //cout << "[单路输出] 仅雷达A" << endl;
 
             FusedPointCloud fused;
+            fused.lidar_id = a.lidar_id; // 雷达A帧标识为0
             fused.timestamp = a.timestamp;
             fused.cloud.reset(new PointCloudT(*a.cloud)); // 深拷贝
             fused.valid_points = fused.cloud->size();
@@ -129,6 +131,7 @@ void PointCloudFuser::fuseLoop() {
             cout << "[单路输出] 仅雷达B" << endl;
 
             FusedPointCloud fused;
+            fused.lidar_id = b.lidar_id; // 雷达B帧标识为1
             fused.timestamp = b.timestamp;
             fused.cloud.reset(new PointCloudT(*b.cloud)); // 深拷贝
             fused.valid_points = fused.cloud->size();
@@ -155,6 +158,7 @@ FusedPointCloud PointCloudFuser::fuse(const RawPointCloud& a, const RawPointClou
     *f.cloud += *a.cloud;
     *f.cloud += *b.cloud;
     f.valid_points = f.cloud->size();
+    f.lidar_id = "127.0.0.1";
 
     return f;
 }

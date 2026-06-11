@@ -8,6 +8,7 @@
 #include <deque>
 
 struct FusedPointCloud {
+    std::string lidar_id;
     uint64_t timestamp;
     PointCloudT::Ptr cloud;
     int valid_points;
@@ -15,7 +16,7 @@ struct FusedPointCloud {
 
 class PointCloudFuser {
 public:
-    // 传入：队列A、队列B、输出队列
+
     PointCloudFuser(
         LockFreeRingQueue<RawPointCloud>* queueA,
         LockFreeRingQueue<RawPointCloud>* queueB,
