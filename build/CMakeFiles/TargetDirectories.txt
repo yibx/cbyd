@@ -1,3 +1,0 @@
-/home/hz/CBYD/build/CMakeFiles/cbyd.dir
-/home/hz/CBYD/build/CMakeFiles/edit_cache.dir
-/home/hz/CBYD/build/CMakeFiles/rebuild_cache.dir
