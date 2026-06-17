@@ -1,0 +1,35 @@
+# 文件路径配置
+Abg_pcd_path: "/home/hz/CBYD/bg_pointcloud/lidarA_single_frame_37498959147.pcd"
+Bbg_pcd_path: "/home/hz/CBYD/tools/radar_bg_diff/lidarA_single_frame_3990065384699769344.pcd"
+
+# 全局算法阈值
+dist_threshold: 0.15
+cluster_eps: 0.3
+cluster_min_points: 20
+stable_frame_count: 12
+stable_dist_threshold: 0.5
+min_valid_ship_points: 150
+
+# 雷达A 完整6自由度外参，相对于码头坐标系的平移和旋转（单位：米和度）
+lidar_a:
+  trans: [3.0, 2.0, 7.2]
+  rotate_z_deg: -25   # 水平左右偏转
+  rotate_y_deg: 0.0   # 侧滚，支架无歪斜填0
+  rotate_x_deg: -8.0  # 俯仰向下8度（负值=镜头朝下）
+
+# 雷达B 完整6自由度外参，相对于码头坐标系的平移和旋转（单位：米和度）
+lidar_b:
+  trans: [-2.0, 2.5, 7.0]
+  rotate_z_deg: 15
+  rotate_y_deg: 0.0
+  rotate_x_deg: -7.0
+
+# 雷达A 相对于雷达B坐标系的外参（A2B）
+lidar_A2B:
+  trans: [-2.0, 2.5, 7.0]
+  rotate_x_deg: 15
+  rotate_y_deg: 0.0
+  rotate_z_deg: 0.0
+
+# 基准融合点云自动更新间隔，单位：秒
+base_update_interval_min: 300.0

@@ -21,6 +21,13 @@ PointCloudFuser::PointCloudFuser(
 void PointCloudFuser::start() {
     if (is_running_) return;
     is_running_ = true;
+
+    if (!loadFusionConfig("../monitor_config.yaml", fuse_cfg_)) {
+        std::cerr << "配置加载失败" << std::endl;
+        return;
+    }
+    T_A2B_ = buildA2BTransform(fuse_cfg_.lidarA2B);
+
     thread_ = std::thread(&PointCloudFuser::fuseLoop, this);
 }
 
@@ -147,19 +154,43 @@ void PointCloudFuser::fuseLoop() {
     }
 }
 
-// ==========================================================
-// 点云融合
-// ==========================================================
-FusedPointCloud PointCloudFuser::fuse(const RawPointCloud& a, const RawPointCloud& b) {
-    FusedPointCloud f;
-    f.timestamp = max(a.timestamp, b.timestamp);
-    f.cloud = PointCloudT::Ptr(new PointCloudT);
+// 构造 T_A2B：雷达A局部坐标系 → 雷达B局部坐标系
+Eigen::Affine3f PointCloudFuser::buildA2BTransform(const LidarA2BExtrinsic& ext)
+{
+    Eigen::Affine3f trans = Eigen::Affine3f::Identity();
+    trans.translation() = ext.trans;
 
-    *f.cloud += *a.cloud;
-    *f.cloud += *b.cloud;
-    f.valid_points = f.cloud->size();
-    f.lidar_id = "127.0.0.1";
+    float rx = ext.rotate_x_deg * M_PI / 180.f;
+    float ry = ext.rotate_y_deg * M_PI / 180.f;
+    float rz = ext.rotate_z_deg * M_PI / 180.f;
 
-    return f;
+    // 旋转顺序 Z-Y-X 与原有统一
+    trans.rotate(Eigen::AngleAxisf(rz, Eigen::Vector3f::UnitZ()));
+    trans.rotate(Eigen::AngleAxisf(ry, Eigen::Vector3f::UnitY()));
+    trans.rotate(Eigen::AngleAxisf(rx, Eigen::Vector3f::UnitX()));
+    return trans;
+}
+
+// 双雷达点云融合函数：B转换至A坐标系，原始点直接拼接，无任何点云处理
+FusedPointCloud PointCloudFuser::fuse(const RawPointCloud& lidarA,
+                                const RawPointCloud& lidarB) {
+    FusedPointCloud fused_res;
+    // 取两帧最大时间戳作为融合帧时间
+    fused_res.timestamp = std::max(lidarA.timestamp, lidarB.timestamp);
+    fused_res.cloud.reset(new PointCloudT);
+
+    // 1、雷达A原始点云直接并入（自身坐标系无需转换）
+    *fused_res.cloud += *lidarA.cloud;
+
+    // 2、雷达B点云仅做坐标变换到A雷达坐标系，不做降噪、不下采样
+    PointCloudT::Ptr b_aligned_cloud(new PointCloudT);
+    pcl::transformPointCloud(*lidarB.cloud, *b_aligned_cloud, T_A2B_);
+    *fused_res.cloud += *b_aligned_cloud;
+
+    // 有效总点数
+    fused_res.valid_points = fused_res.cloud->size();
+    fused_res.lidar_id = "127.0.0.1";
+
+    return fused_res;
 }
 

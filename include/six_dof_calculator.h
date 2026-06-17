@@ -52,6 +52,12 @@ private:
     bool pool_running_;
 
     RegParam regCfg_;
+    RadarGlobalConfig monitor_cfg_;
+    Eigen::Affine3f T_A2dock_;
+
+    // 新增
+    std::chrono::steady_clock::time_point last_base_update_tp_;
+    std::mutex base_mtx_; // 多线程保护基准帧
 };
 
 #endif

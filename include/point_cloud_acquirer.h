@@ -8,6 +8,7 @@
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include "config_loader.h"
+#include "lidar_bg_diff.h"
 
 using PointT = pcl::PointXYZ;
 using PointCloudT = pcl::PointCloud<PointT>;
@@ -34,6 +35,9 @@ private:
     void acquireRadar1Loop();  
     void acquireRadar2Loop();  
 
+    bool initLidarBgProcessor(LidarBgDiff& proc, int lidar_sel);
+    ShipMonitorResult processOneLidarFrame(LidarBgDiff& proc, const PointCloudT::Ptr raw_cloud, PointCloudT::Ptr ship_out, int lidar_sel);
+
 private:
     LockFreeRingQueue<RawPointCloud>* queueA_;
     LockFreeRingQueue<RawPointCloud>* queueB_;
@@ -45,6 +49,7 @@ private:
     std::atomic<bool> is_running_{false};
 
     AllLidarConfigs lidarCfg_;
+    RadarGlobalConfig monitor_cfg_;
 };
 
 #endif

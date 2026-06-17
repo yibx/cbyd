@@ -6,6 +6,7 @@
 #include <thread>
 #include <atomic>
 #include <deque>
+#include "config_loader.h"
 
 struct FusedPointCloud {
     std::string lidar_id;
@@ -28,7 +29,11 @@ public:
 
 private:
     void fuseLoop();
-    FusedPointCloud fuse(const RawPointCloud& a, const RawPointCloud& b);
+    // 输入：A原始点云、B原始点云、B->A变换矩阵
+    // 输出：融合后统一在A坐标系的点云结果
+    FusedPointCloud fuse(const RawPointCloud& lidarA, const RawPointCloud& lidarB);
+
+    Eigen::Affine3f buildA2BTransform(const LidarA2BExtrinsic& ext);
 
 private:
     LockFreeRingQueue<RawPointCloud>* queueA_;
@@ -40,6 +45,9 @@ private:
 
     std::thread thread_;
     std::atomic<bool> is_running_{false};
+
+    FusionGlobalConfig fuse_cfg_;
+    Eigen::Affine3f T_A2B_;
 };
 
 #endif

@@ -12,7 +12,7 @@ add_definitions(${PCL_DEFINITIONS})
 #add_library(test_pcl $(./LSSDK))
 
 add_executable(cbyd ./src/main.cpp ./src/point_cloud_acquirer.cpp ./src/point_cloud_fuser.cpp
-./src/six_dof_calculator.cpp ./src/data_outputter.cpp ./src/system_state_manager.cpp ./src/wharf_dock_checker.cpp ./src/Logger.cpp ./src/easylogging++.cc ./src/config_loader.cpp)
+./src/six_dof_calculator.cpp ./src/data_outputter.cpp ./src/system_state_manager.cpp ./src/wharf_dock_checker.cpp ./src/Logger.cpp ./src/easylogging++.cc ./src/config_loader.cpp ./src/lidar_bg_diff.cpp)
  
 target_link_libraries (cbyd ${PCL_LIBRARIES} yaml-cpp pthread)
  

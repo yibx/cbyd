@@ -111,3 +111,126 @@ bool loadRegParam(const std::string& cfgPath, RegParam& outParam)
         return false;
     }
 }
+
+bool loadMonitorConfig(const std::string& yaml_path, RadarGlobalConfig& outConfig)
+{
+    try
+    {
+        YAML::Node root = YAML::LoadFile(yaml_path);
+
+        // 路径
+        outConfig.lidarA_bg_pcd_path  = root["Abg_pcd_path"].as<std::string>();
+        outConfig.lidarB_bg_pcd_path  = root["Bbg_pcd_path"].as<std::string>();
+
+        // 基础算法阈值
+        outConfig.dist_threshold = root["dist_threshold"].as<double>();
+        outConfig.cluster_eps    = root["cluster_eps"].as<double>();
+        outConfig.cluster_min_points = root["cluster_min_points"].as<int>();
+
+        // 船舶停稳判定参数
+        outConfig.stable_frame_count     = root["stable_frame_count"].as<int>();
+        outConfig.stable_dist_threshold  = root["stable_dist_threshold"].as<double>();
+        outConfig.min_valid_ship_points  = root["min_valid_ship_points"].as<int>();
+
+        // 雷达A外参
+        YAML::Node nodeA = root["lidar_a"];
+        auto arrA = nodeA["trans"].as<std::vector<float>>();
+        outConfig.lidarA.trans = Eigen::Vector3f(arrA[0], arrA[1], arrA[2]);
+        outConfig.lidarA.rotate_z_deg = nodeA["rotate_z_deg"].as<float>();
+        if(nodeA["rotate_y_deg"]) outConfig.lidarA.rotate_y_deg = nodeA["rotate_y_deg"].as<float>();
+        if(nodeA["rotate_x_deg"]) outConfig.lidarA.rotate_x_deg = nodeA["rotate_x_deg"].as<float>();
+
+        // 雷达B外参
+        YAML::Node nodeB = root["lidar_b"];
+        auto arrB = nodeB["trans"].as<std::vector<float>>();
+        outConfig.lidarB.trans = Eigen::Vector3f(arrB[0], arrB[1], arrB[2]);
+        outConfig.lidarB.rotate_z_deg = nodeB["rotate_z_deg"].as<float>();
+        if(nodeB["rotate_y_deg"]) outConfig.lidarB.rotate_y_deg = nodeB["rotate_y_deg"].as<float>();
+        if(nodeB["rotate_x_deg"]) outConfig.lidarB.rotate_x_deg = nodeB["rotate_x_deg"].as<float>();
+
+        if (root["base_update_interval_min"].IsDefined())
+        {
+            outConfig.base_update_interval_min = root["base_update_interval_min"].as<double>();
+        }
+    }
+    catch (std::exception& e)
+    {
+        std::cerr << "[ERROR] Load yaml config failed: " << e.what() << std::endl;
+        return false;
+    }
+    return true;
+}
+
+// 根据雷达外参生成 lidar->dock 变换矩阵
+Eigen::Affine3f buildLidarTransform(const RadarExtrinsic& ext) {
+    Eigen::Affine3f trans = Eigen::Affine3f::Identity();
+    trans.translation() = ext.trans;
+
+    float rad_z = ext.rotate_z_deg * M_PI / 180.f;
+    float rad_y = ext.rotate_y_deg * M_PI / 180.f;
+    float rad_x = ext.rotate_x_deg * M_PI / 180.f;
+
+    trans.rotate(Eigen::AngleAxisf(rad_z, Eigen::Vector3f::UnitZ()));
+    trans.rotate(Eigen::AngleAxisf(rad_y, Eigen::Vector3f::UnitY()));
+    trans.rotate(Eigen::AngleAxisf(rad_x, Eigen::Vector3f::UnitX()));
+    return trans;
+}
+
+// 获取雷达A到dock的变换矩阵
+Eigen::Affine3f getLidarATrans(RadarExtrinsic lidarA) {
+    return buildLidarTransform(lidarA);
+}
+
+// 获取雷达B到dock的变换矩阵
+Eigen::Affine3f getLidarBTrans(RadarExtrinsic lidarB) {
+    return buildLidarTransform(lidarB);
+}
+
+bool loadFusionConfig(const std::string& yaml_path, FusionGlobalConfig& outFuseCfg)
+{
+    try
+    {
+        YAML::Node root = YAML::LoadFile(yaml_path);
+        if (!root.IsDefined())
+        {
+            std::cerr << "[FUSION ERROR] Fusion yaml empty: " << yaml_path << std::endl;
+            return false;
+        }
+
+        // 读取雷达A -> dock
+        YAML::Node nodeA = root["lidar_a"];
+        auto arrA = nodeA["trans"].as<std::vector<float>>();
+        outFuseCfg.lidarA2dock.trans = Eigen::Vector3f(arrA[0], arrA[1], arrA[2]);
+        outFuseCfg.lidarA2dock.rotate_z_deg = nodeA["rotate_z_deg"].as<float>();
+        if(nodeA["rotate_y_deg"]) outFuseCfg.lidarA2dock.rotate_y_deg = nodeA["rotate_y_deg"].as<float>();
+        if(nodeA["rotate_x_deg"]) outFuseCfg.lidarA2dock.rotate_x_deg = nodeA["rotate_x_deg"].as<float>();
+
+        // 读取雷达B -> dock
+        YAML::Node nodeB = root["lidar_b"];
+        auto arrB = nodeB["trans"].as<std::vector<float>>();
+        outFuseCfg.lidarB2dock.trans = Eigen::Vector3f(arrB[0], arrB[1], arrB[2]);
+        outFuseCfg.lidarB2dock.rotate_z_deg = nodeB["rotate_z_deg"].as<float>();
+        if(nodeB["rotate_y_deg"]) outFuseCfg.lidarB2dock.rotate_y_deg = nodeB["rotate_y_deg"].as<float>();
+        if(nodeB["rotate_x_deg"]) outFuseCfg.lidarB2dock.rotate_x_deg = nodeB["rotate_x_deg"].as<float>();
+
+        // ========== 新增：读取 A相对于B 的外参 lidar_A2B ==========
+        YAML::Node nodeA2B = root["lidar_A2B"];
+        auto arrA2B = nodeA2B["trans"].as<std::vector<float>>();
+        outFuseCfg.lidarA2B.trans = Eigen::Vector3f(arrA2B[0], arrA2B[1], arrA2B[2]);
+        outFuseCfg.lidarA2B.rotate_x_deg = nodeA2B["rotate_x_deg"].as<float>();
+        outFuseCfg.lidarA2B.rotate_y_deg = nodeA2B["rotate_y_deg"].as<float>();
+        outFuseCfg.lidarA2B.rotate_z_deg = nodeA2B["rotate_z_deg"].as<float>();
+
+        // 融合开关
+        if(root["fusion"].IsDefined())
+        {
+            outFuseCfg.fuse_param.enable_fusion = root["fusion"]["enable_fusion"].as<bool>(outFuseCfg.fuse_param.enable_fusion);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[FUSION ERROR] Load fusion config failed: " << e.what() << std::endl;
+        return false;
+    }
+    return true;
+}
