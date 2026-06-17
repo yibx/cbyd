@@ -1,13 +1,20 @@
-#ifndef DATA_OUTPUTTER_H
-#define DATA_OUTPUTTER_H
-
+#include "industrial_mqtt_client.h"
+#include "system_state_manager.h"
 #include "lock_free_queue.h"
 #include "six_dof_calculator.h"
-#include "system_state_manager.h"
 #include <thread>
+#include <atomic>
 #include <string>
+#include <chrono>
 
-class DataOutputter {
+using SM = SystemStateManager;
+using namespace std::chrono_literals;
+
+struct SixDofResult;
+struct SystemError;
+
+class DataOutputter
+{
 public:
     explicit DataOutputter(LockFreeRingQueue<SixDofResult>* q3);
     virtual ~DataOutputter() = default;
@@ -15,32 +22,41 @@ public:
     void start();
     void stop();
 
+protected:
     virtual bool writeToDatabase(const SixDofResult& r) = 0;
     virtual bool pushRealTimeData(const SixDofResult& r, const std::string& url) = 0;
-
-    // ´íÎó×¨ÓÃ½Ó¿Ú
-    virtual bool writeErrorToDatabase(const SystemError& err) = 0;
-    virtual bool pushRealTimeError(const SystemError& err, const std::string& url) = 0;
+    std::thread thread_;
+    std::atomic<bool> is_running_{false};
+    LockFreeRingQueue<SixDofResult>* queue3_ = nullptr;
 
 private:
     void outputLoop();
-
-    LockFreeRingQueue<SixDofResult>* queue3_;
-    std::thread thread_;
-    std::atomic<bool> is_running_{false};
 };
 
-class ConcreteDataOutputter : public DataOutputter {
+class ConcreteDataOutputter : public DataOutputter
+{
 public:
-    // ÒÆ³ı using DataOutputter::DataOutputter;
-    // ¸ÄÎªÏÔÊ½ÉùÃ÷¹¹Ôìº¯Êı
     explicit ConcreteDataOutputter(LockFreeRingQueue<SixDofResult>* q3);
+    ~ConcreteDataOutputter() override;
 
+protected:
     bool writeToDatabase(const SixDofResult& r) override;
     bool pushRealTimeData(const SixDofResult& r, const std::string& url) override;
 
-    bool writeErrorToDatabase(const SystemError& err) override;
-    bool pushRealTimeError(const SystemError& err, const std::string& url) override;
-};
+private:
+    bool writeErrorToDatabase(const SystemError& err);
+    bool pushRealTimeError(const SystemError& err, const std::string& url);
 
-#endif
+    // MQTT ç›¸å…³å›è°ƒé™æ€å‡½æ•°
+    static void logCallback(MqttLogLevel level, const std::string& msg);
+    static void connCallback(bool connected);
+
+    // MQTT å®ä¾‹
+    IndustrialMqttClient mqtt_;
+    // è®¾å¤‡/æ³Šä½å›ºå®šé…ç½®
+    std::string berth_id_ = "2056304240267644930";
+    std::string dev_ip_list_ = "192.168.0.200,192.168.0.201,192.168.0.202,192.168.0.203";
+    // è®¾å¤‡çŠ¶æ€ä¸ŠæŠ¥è®¡æ—¶
+    std::chrono::steady_clock::time_point last_dev_status_tp_;
+    const std::chrono::seconds dev_status_interval_{3};
+};
