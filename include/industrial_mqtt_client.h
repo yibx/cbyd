@@ -12,14 +12,6 @@
 #include <memory>
 #include <thread>   // 新增：线程头文件
 
-// 日志级别定义
-enum class MqttLogLevel {
-    LOG_DEBUG,
-    LOG_INFO,
-    LOG_WARN,
-    LOG_ERROR
-};
-
 // MQTT 配置结构体
 struct MqttConfig {
     std::string host = "127.0.0.1";
@@ -37,7 +29,6 @@ struct MqttConfig {
 
 class IndustrialMqttClient {
 public:
-    using LogCallback = std::function<void(MqttLogLevel, const std::string&)>;
     using ConnectionStatusCallback = std::function<void(bool connected)>;
 
     IndustrialMqttClient();
@@ -59,7 +50,6 @@ public:
                                       const std::string& timestamp,
                                       int deviceStatus);
 
-    void setLogCallback(const LogCallback& callback);
     void setConnectionStatusCallback(const ConnectionStatusCallback& callback);
     bool isConnected() const { return is_connected_.load(); }
 
@@ -67,7 +57,6 @@ private:
     static void onMqttEvent(mqtt_client_t* cli, int type);
     int publishInternal(const char* payload, const std::string& topic);
     void reconnect();
-    void log(MqttLogLevel level, const std::string& msg);
     std::string generateClientId();
 
     // 新增：MQTT 事件循环线程函数
@@ -85,7 +74,6 @@ private:
 
     std::thread mqtt_thread_;  // 新增：独立工作线程
 
-    LogCallback log_callback_;
     ConnectionStatusCallback conn_callback_;
 };
 

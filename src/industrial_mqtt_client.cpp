@@ -31,7 +31,7 @@ bool IndustrialMqttClient::init(const MqttConfig& config)
 {
     if (is_running_.load())
     {
-        log(MqttLogLevel::LOG_WARN, "MQTT client already running");
+        //log(MqttLogLevel::LOG_WARN, "MQTT client already running");
         return false;
     }
     config_ = config;
@@ -39,7 +39,7 @@ bool IndustrialMqttClient::init(const MqttConfig& config)
     {
         config_.client_id = generateClientId();
     }
-    log(MqttLogLevel::LOG_INFO, "MQTT init success, client_id: " + config_.client_id);
+    //log(MqttLogLevel::LOG_INFO, "MQTT init success, client_id: " + config_.client_id);
     return true;
 }
 
@@ -49,7 +49,7 @@ bool IndustrialMqttClient::start()
     std::lock_guard<std::mutex> lock(mqtt_mutex_);
     if (is_running_.load())
     {
-        log(MqttLogLevel::LOG_WARN, "MQTT already started");
+        //log(MqttLogLevel::LOG_WARN, "MQTT already started");
         return true;
     }
 
@@ -64,7 +64,7 @@ bool IndustrialMqttClient::start()
     }
     mqtt_thread_ = std::thread(&IndustrialMqttClient::mqttWorkThread, this);
 
-    log(MqttLogLevel::LOG_INFO, "MQTT work thread started, no longer block main thread");
+    //log(MqttLogLevel::LOG_INFO, "MQTT work thread started, no longer block main thread");
     return true;
 }
 
@@ -88,7 +88,7 @@ void IndustrialMqttClient::stop()
     }
 
     is_connected_ = false;
-    log(MqttLogLevel::LOG_INFO, "MQTT client stopped");
+    //log(MqttLogLevel::LOG_INFO, "MQTT client stopped");
 
     if (conn_callback_)
     {
@@ -107,7 +107,7 @@ void IndustrialMqttClient::mqttWorkThread()
             mqtt_cli_ = mqtt_client_new(nullptr);
             if (!mqtt_cli_)
             {
-                log(MqttLogLevel::LOG_ERROR, "Create mqtt client failed");
+                //log(MqttLogLevel::LOG_ERROR, "Create mqtt client failed");
                 std::this_thread::sleep_for(std::chrono::seconds(config_.reconnect_interval));
                 continue;
             }
@@ -132,7 +132,7 @@ void IndustrialMqttClient::mqttWorkThread()
         int ret = mqtt_client_connect(mqtt_cli_, config_.host.c_str(), config_.port, config_.enable_ssl);
         if (ret != 0)
         {
-            log(MqttLogLevel::LOG_ERROR, "Connect broker failed, ret=" + std::to_string(ret));
+            //log(MqttLogLevel::LOG_ERROR, "Connect broker failed, ret=" + std::to_string(ret));
             {
                 std::lock_guard<std::mutex> lock(mqtt_mutex_);
                 mqtt_client_free(mqtt_cli_);
@@ -163,14 +163,14 @@ void IndustrialMqttClient::mqttWorkThread()
         // 执行重连等待
         reconnect();
     }
-    log(MqttLogLevel::LOG_INFO, "MQTT work thread exit");
+    //log(MqttLogLevel::LOG_INFO, "MQTT work thread exit");
 }
 
 int IndustrialMqttClient::publish(const std::string& payload, const std::string& topic)
 {
     if (!is_connected_.load())
     {
-        log(MqttLogLevel::LOG_ERROR, "Publish failed: not connected");
+        //log(MqttLogLevel::LOG_ERROR, "Publish failed: not connected");
         return -1;
     }
     std::string target_topic = topic.empty() ? config_.default_topic : topic;
@@ -182,7 +182,7 @@ int IndustrialMqttClient::publishInternal(const char* payload, const std::string
     std::lock_guard<std::mutex> lock(mqtt_mutex_);
     if (!mqtt_cli_)
     {
-        log(MqttLogLevel::LOG_ERROR, "MQTT client handle null");
+        //log(MqttLogLevel::LOG_ERROR, "MQTT client handle null");
         return -2;
     }
 
@@ -197,10 +197,10 @@ int IndustrialMqttClient::publishInternal(const char* payload, const std::string
     int mid = mqtt_client_publish(mqtt_cli_, &msg);
     if (mid <= 0)
     {
-        log(MqttLogLevel::LOG_ERROR, "Publish fail, mid=" + std::to_string(mid));
+        //log(MqttLogLevel::LOG_ERROR, "Publish fail, mid=" + std::to_string(mid));
         return mid;
     }
-    log(MqttLogLevel::LOG_DEBUG, "Publish ok, topic=" + topic);
+    //log(MqttLogLevel::LOG_DEBUG, "Publish ok, topic=" + topic);
     return 0;
 }
 
@@ -214,16 +214,16 @@ void IndustrialMqttClient::onMqttEvent(mqtt_client_t* cli, int type)
         case MQTT_TYPE_CONNACK:
             client->is_connected_ = true;
             client->reconnect_attempts_ = 0;
-            client->log(MqttLogLevel::LOG_INFO, "MQTT connected to RabbitMQ");
+            std::cout << "[MQTT] Connected to broker" << std::endl;
             if (client->conn_callback_) client->conn_callback_(true);
             break;
         case MQTT_TYPE_DISCONNECT:
             client->is_connected_ = false;
-            client->log(MqttLogLevel::LOG_WARN, "MQTT disconnected");
+            std::cout << "[MQTT] Disconnected from broker" << std::endl;
             if (client->conn_callback_) client->conn_callback_(false);
             break;
         case MQTT_TYPE_PUBACK:
-            client->log(MqttLogLevel::LOG_DEBUG, "Recv PUBACK");
+            std::cout << "[MQTT] Publish acknowledged" << std::endl;
             break;
         default:
             break;
@@ -234,12 +234,12 @@ void IndustrialMqttClient::reconnect()
 {
     if (config_.max_reconnect_attempts > 0 && reconnect_attempts_ >= config_.max_reconnect_attempts)
     {
-        log(MqttLogLevel::LOG_ERROR, "Reach max reconnect times, stop reconnect");
+        //log(MqttLogLevel::LOG_ERROR, "Reach max reconnect times, stop reconnect");
         stop();
         return;
     }
     reconnect_attempts_++;
-    log(MqttLogLevel::LOG_WARN, "Reconnect count: " + std::to_string(reconnect_attempts_));
+    //log(MqttLogLevel::LOG_WARN, "Reconnect count: " + std::to_string(reconnect_attempts_));
 }
 
 std::string IndustrialMqttClient::buildJson(const std::string berthId, const std::string& deviceIp, 
@@ -289,32 +289,9 @@ std::string IndustrialMqttClient::buildDeviceStatusJson(const std::string& devic
     return j.dump(4);
 }
 
-void IndustrialMqttClient::setLogCallback(const LogCallback& callback)
-{
-    log_callback_ = callback;
-}
-
 void IndustrialMqttClient::setConnectionStatusCallback(const ConnectionStatusCallback& callback)
 {
     conn_callback_ = callback;
-}
-
-void IndustrialMqttClient::log(MqttLogLevel level, const std::string& msg)
-{
-    if (log_callback_)
-    {
-        log_callback_(level, msg);
-        return;
-    }
-    const char* lv = "";
-    switch (level)
-    {
-        case MqttLogLevel::LOG_DEBUG: lv = "[DEBUG]"; break;
-        case MqttLogLevel::LOG_INFO:  lv = "[INFO]";  break;
-        case MqttLogLevel::LOG_WARN:  lv = "[WARN]";  break;
-        case MqttLogLevel::LOG_ERROR: lv = "[ERROR]"; break;
-    }
-    printf("%s %s\n", lv, msg.c_str());
 }
 
 std::string IndustrialMqttClient::generateClientId()

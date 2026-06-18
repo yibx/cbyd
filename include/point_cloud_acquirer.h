@@ -15,6 +15,7 @@ using PointCloudT = pcl::PointCloud<PointT>;
 
 
 struct RawPointCloud {
+    std::string lidar_ip;
     std::string lidar_id;     
     uint64_t timestamp;        
     PointCloudT::Ptr cloud;   

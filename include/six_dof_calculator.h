@@ -14,6 +14,8 @@
 #include "config_loader.h"
 
 struct SixDofResult {
+    std::string lidar_ip;
+    std::string lidar_id;
     uint64_t timestamp;
     float tx, ty, tz;
     float rx, ry, rz;
@@ -40,7 +42,6 @@ private:
 
     WharfDockChecker dock_checker_;
 
-    bool b_set_base_;
     // 雷达坐标系 → 船舶坐标系的旋转矩阵
     Eigen::Matrix3d lr_sr_;
 
@@ -54,8 +55,8 @@ private:
     RegParam regCfg_;
     RadarGlobalConfig monitor_cfg_;
     Eigen::Affine3f T_A2dock_;
+    Eigen::Affine3f T_B2dock_;
 
-    // 新增
     std::chrono::steady_clock::time_point last_base_update_tp_;
     std::mutex base_mtx_; // 多线程保护基准帧
 };

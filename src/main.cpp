@@ -10,7 +10,7 @@
 // 全局原子标志，用于信号处理
 std::atomic<bool> running{true};
 
-// Ctrl+C 信号处理函数
+// 信号处理函数
 void sigint_handler(int sig) {
     running = false;
     std::cout << "\nReceived Ctrl+C, stopping threads..." << std::endl;

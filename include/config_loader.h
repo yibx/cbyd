@@ -80,6 +80,19 @@ struct RegParam
 bool loadRegParam(const std::string& cfgPath, RegParam& outParam);
 
 
+// MQTT客户端配置
+struct MqttConfigParam
+{
+    std::string berth_id;
+    std::string host;
+    int port;
+    std::string username;
+    std::string password;
+    std::string default_topic;
+    std::string dev_status_topic;
+    int qos;
+    int reconnect_interval;
+};
 
 // 单台雷达6自由度外参
 struct RadarExtrinsic
@@ -113,6 +126,8 @@ struct RadarGlobalConfig
 
     // 基准帧自动更新间隔，单位：秒，默认300秒=5分钟
     double base_update_interval_min = 300.0;
+
+    MqttConfigParam mqtt_cfg;
 };
 
 bool loadMonitorConfig(const std::string& yaml_path, RadarGlobalConfig& outConfig);
@@ -123,33 +138,5 @@ Eigen::Affine3f buildLidarTransform(const RadarExtrinsic& ext);
 Eigen::Affine3f getLidarATrans(RadarExtrinsic lidarA);
 
 Eigen::Affine3f getLidarBTrans(RadarExtrinsic lidarB);
-
-
-struct FusionParam {
-    bool enable_fusion = true;
-};
-
-// A相对B的外参结构体
-struct LidarA2BExtrinsic
-{
-    Eigen::Vector3f trans;
-    float rotate_x_deg;
-    float rotate_y_deg;
-    float rotate_z_deg;
-};
-
-// 扩展融合配置，新增A2B直接外参
-struct FusionGlobalConfig
-{
-    RadarExtrinsic lidarA2dock;
-    RadarExtrinsic lidarB2dock;
-    LidarA2BExtrinsic lidarA2B; // A相对于B坐标系外参
-    FusionParam fuse_param;
-};
-
-// 原有函数声明不变
-bool loadFusionConfig(const std::string& yaml_path, FusionGlobalConfig& outFuseCfg);
-
-
 
 #endif // CONFIG_LOADER_H

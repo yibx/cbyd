@@ -36,25 +36,6 @@ using PointCloudT = pcl::PointCloud<PointT>;
 #define GICP_LEAF_SIZE 0.05f
 #define GICP_MAX_CORR 0.3f
 
-
-const double SamplePeriod = 0.1;
-const int StableFrameNum = 30;
-
-
-// 快速裁剪
-template<typename T>
-inline T clamp_val(T val, T min_val, T max_val)
-{
-    return (val < min_val) ? min_val : (val > max_val) ? max_val : val;
-}
-
-// 快速角度包装
-inline float wrapAngle(float angle) {
-    angle = fmod(angle + M_PI, 2 * M_PI);
-    if (angle < 0) angle += 2 * M_PI;
-    return angle - M_PI;
-}
-
 using FPFHSignature = pcl::FPFHSignature33;
 
 // 输入旋转矩阵 R，输出 欧拉角 (rad)
@@ -70,19 +51,21 @@ SixDofCalculator::SixDofCalculator(LockFreeRingQueue<FusedPointCloud>* rq_fuse, 
     : rq_fuse_(rq_fuse), rq_sixdof_(rq_sixdof), pool_running_(true)
 {
     if (!loadRegParam("../reg_config.yaml", regCfg_)){
+        std::string err_msg = "算法配置加载失败，请检查reg_config.yaml文件";
+        Logger::instance().info(err_msg);
         return;
     }
     if (!loadMonitorConfig("../monitor_config.yaml", monitor_cfg_)) {
-        std::cerr << "配置文件加载失败，程序退出" << std::endl;
+        std::string err_msg = "监测配置加载失败，请检查monitor_config.yaml文件";
+        Logger::instance().info(err_msg);
         return;
     }
-    // 生成雷达A -> 码头4×4变换矩阵
-    T_A2dock_ = buildLidarTransform(monitor_cfg_.lidarA);
-    std::cout << "[6DOF INFO] Load lidarA -> dock transform success" << std::endl;
+    // 获取雷达A到dock的变换矩阵
+    T_A2dock_ = getLidarATrans(monitor_cfg_.lidarA);
+    // 获取雷达B到dock的变换矩阵
+    T_B2dock_ = getLidarBTrans(monitor_cfg_.lidarB);
 
     last_base_update_tp_ = std::chrono::steady_clock::now();
-
-    b_set_base_ = false;
     // 飞腾D2000 8核推荐：6个工作线程
     int thread_num = 6;
     for (int i = 0; i < thread_num; ++i) {
@@ -109,11 +92,11 @@ void SixDofCalculator::workerThread(int core_id)
             task = move(tasks_.front());
             tasks_.pop();
         }
-	auto start = std::chrono::high_resolution_clock::now();
+	    auto start = std::chrono::high_resolution_clock::now();
         task();
-	auto end = std::chrono::high_resolution_clock::now();
+	    auto end = std::chrono::high_resolution_clock::now();
         double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
-	std::cout << "single: " << elapsed_ms << std::endl;
+	    std::cout << "single: " << elapsed_ms << std::endl;
     }
 }
 
@@ -159,7 +142,8 @@ void SixDofCalculator::calcLoop() {
 		    		    retry++;
                     }
 		    	    if (retry >= max_retry) {
-		    	    	cerr << "六自由度结果入队失败（重试" << max_retry << "次)，丢弃结果" << std::endl;
+                        std::string err_msg = "六自由度结果入队失败，可能导致监测数据丢失" + to_string(max_retry) + "次";
+                        Logger::instance().info(err_msg);
 		    	    }
                 });
                 cv_.notify_one();
@@ -171,7 +155,7 @@ void SixDofCalculator::calcLoop() {
     }
 }
 
-// 极速预处理（仅体素滤波，无统计滤波）
+// 极速预处理
 PointCloudT::Ptr preprocess(const PointCloudT::Ptr& cloud)
 {
     if (cloud->empty()) return cloud;
@@ -288,7 +272,7 @@ Eigen::Matrix4f coarseRegistration(PointCloudT::Ptr& src, PointCloudT::Ptr& dst,
     ndt.align(*output, init_guess);
 
     float score = ndt.getFitnessScore();
-    std::cout << "NDT 分数: " << score << std::endl;
+    //std::cout << "NDT 分数: " << score << std::endl;
 
     // 配准失败，使用质心平移兜底
     if (!ndt.hasConverged() || score > ndt_param.fit_thresh)
@@ -343,12 +327,12 @@ Eigen::Matrix4f fineRegistrationGICP(PointCloudT::Ptr& src, PointCloudT::Ptr& ds
     float fitness = gicp.getFitnessScore(gicp_param.score_radius);
     bool converged = gicp.hasConverged();
 
-    std::cout << "GICP 收敛: " << converged << " 分数: " << fitness << std::endl;
+    //std::cout << "GICP 收敛: " << converged << " 分数: " << fitness << std::endl;
 
     // 配准不佳，保留上一帧姿态
-    if (!converged || fitness > gicp_param.fit_thresh)
-    {
-        std::cout << "→ 配准效果不佳，保持上一帧姿态\n";
+    if (!converged || fitness > gicp_param.fit_thresh) {
+        std::string err_msg = "位姿解算失败，保持上一帧结果";
+        Logger::instance().info(err_msg);
         return init_trans;
     }
 
@@ -393,8 +377,8 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
         fuse_pc_base_ = c;
         last_base_update_tp_ = now_tp;
         r.confidence = 1.00f;
-        std::cout << "[6DOF INFO] Update base fused point cloud, interval=" << interval_min << " min" << std::endl;
-        return r;
+        std::string log_msg = "更新基准帧，间隔=" + to_string(interval_min) + "分钟";
+        Logger::instance().info(log_msg);
     }
 
     //PointCloudT::Ptr src = preprocess(c.cloud);
@@ -410,20 +394,38 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
         return r;
     }
 
-    // coarse + fine GICP配准，输出【雷达A局部坐标系】变换矩阵
+    // coarse + fine GICP配准，输出【当前雷达局部坐标系】变换矩阵
     Eigen::Matrix4f coarse_T = coarseRegistration(src, dst, regCfg_).cast<float>();
-    Eigen::Matrix4f fine_T = fineRegistrationGICP(src, dst, coarse_T, regCfg_).cast<float>();
+    Eigen::Matrix4f fine_T_local = fineRegistrationGICP(src, dst, coarse_T, regCfg_).cast<float>();
 
-    // 构造仿射矩阵 T_fine_A：A坐标系下点云相对变换
-    Eigen::Affine3f T_fine_A;
-    T_fine_A.matrix() = fine_T;
+    // 局部变换仿射容器：当前雷达下船舶相对运动变换
+    Eigen::Affine3f T_local;
+    T_local.matrix() = fine_T_local;
 
-    // 核心坐标转换：雷达A局部 → 码头船舶坐标系，在码头坐标系下选取一个点作为船舶位置（通常是质心或某个特征点），
-    // 把码头基准点，反向转换到雷达 A 局部坐标系，得到雷达局部基准点，在雷达局部空间，计算出的船舶相对运动，
-    // 得到运动后的雷达局部点，再把运动后的雷达局部点，转回码头全局坐标系，得到船舶在码头坐标系下的最终位置和姿态。
-    // T_ship_dock = T_A2dock * T_fine_A * inv(T_A2dock)
-    Eigen::Affine3f T_A2dock_inv = T_A2dock_.inverse();
-    Eigen::Affine3f T_ship_dock = T_A2dock_ * T_fine_A * T_A2dock_inv;
+    // 最终码头坐标系下船舶整体位姿变换
+    Eigen::Affine3f T_ship_dock;
+
+    if (c.lidar_id == "B") {
+        // 输入点云来自雷达B：T_local 是B局部坐标系的船舶变换，需要转换到A局部坐标系
+        Eigen::Affine3f T_B2A = T_A2dock_.inverse() * T_B2dock_;
+        Eigen::Affine3f T_A2B_ = T_B2A.inverse();
+
+        Eigen::Affine3f T_fine_A = T_A2B_.inverse() * T_local * T_A2B_;
+        // A局部变换映射到码头全局
+        Eigen::Affine3f T_A2dock_inv = T_A2dock_.inverse();
+        T_ship_dock = T_A2dock_ * T_fine_A * T_A2dock_inv;
+    }
+    else if (c.lidar_id == "A")
+    {
+        // 输入点云来自雷达A，局部变换直接为A系变换
+        Eigen::Affine3f T_fine_A = T_local;
+        Eigen::Affine3f T_A2dock_inv = T_A2dock_.inverse();
+        T_ship_dock = T_A2dock_ * T_fine_A * T_A2dock_inv;
+    } else {
+        std::string err_msg = "未知雷达ID: " + c.lidar_id;
+        Logger::instance().info(err_msg);
+        return r;
+    }
 
     // 提取码头坐标系下旋转、平移
     Eigen::Matrix3f R_ship = T_ship_dock.rotation().cast<float>();
@@ -433,20 +435,16 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     float roll, pitch, yaw;
     getEulerAngles(R_ship, roll, pitch, yaw);
 
-    // 填充结果：tx/ty/tz 码头坐标系米，rx/ry/rz 欧拉角
+    // 填充结果：tx/ty/tz 码头坐标系厘米，rx/ry/rz 欧拉角（rad），confidence 简单置信度
+    r.lidar_ip = c.lidar_ip;
+    r.lidar_id = c.lidar_id;
     r.rx = roll;
     r.ry = pitch;
     r.rz = yaw;
-    r.tx = t_ship.x() * 100; // 转换为厘米
-    r.ty = t_ship.y() * 100; // 转换为厘米
-    r.tz = t_ship.z() * 100; // 转换为厘米
+    r.tx = t_ship.x() * 100; // m 转 cm
+    r.ty = t_ship.y() * 100;
+    r.tz = t_ship.z() * 100;
     r.confidence = 0.95f;
-
-    std::cout << "[DOCK SHIFT] rx:" << r.rx << ",ry:" << r.ry << ",rz:" << r.rz
-              << ",tx:" << r.tx << ",ty:" << r.ty << ",tz:" << r.tz << std::endl;
-
-    if (b_set_base_) {
-        return r;
-    }
+              
     return r;
 }
