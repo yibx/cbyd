@@ -5,7 +5,37 @@
 #include <thread>
 #include <cstring>
 
+#include "rapidjson/document.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
+
+using namespace rapidjson;
+
 using namespace nlohmann;
+
+
+// 自定义Writer，全局强制所有double输出2位小数
+template<typename OutputStream>
+class TwoDecimalWriter : public Writer<OutputStream> {
+public:
+    using Base = Writer<OutputStream>;
+    explicit TwoDecimalWriter(OutputStream& os) : Base(os) {}
+
+    // 重载浮点数打印逻辑
+    bool Double(double d)
+    {
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(2) << d;
+        std::string numStr = ss.str();
+        return Base::String(numStr.c_str(), numStr.size());
+    }
+};
+
+// 数值四舍五入工具
+static double keep2(float val) {
+    return std::round(val * 100.0) / 100.0;
+}
+
 
 static std::string formatFloat(float value, int precision = 3) {
     std::stringstream ss;
@@ -248,6 +278,7 @@ std::string IndustrialMqttClient::buildJson(const std::string berthId, const std
 		float bowX, float bowY, float bowZ,
 		float sternX, float sternY, float sternZ)
 {
+#if 0
     json j;
 
     j["berthId"] = berthId;
@@ -274,6 +305,46 @@ std::string IndustrialMqttClient::buildJson(const std::string berthId, const std
     };
 
     return j.dump(4);
+#endif
+
+    Document doc;
+    doc.SetObject();
+    Document::AllocatorType& alloc = doc.GetAllocator();
+
+    // 基础字符串字段
+    doc.AddMember("berthId", StringRef(berthId.c_str()), alloc);
+    doc.AddMember("deviceIp", StringRef(deviceIp.c_str()), alloc);
+    doc.AddMember("timestamp", StringRef(timestamp.c_str()), alloc);
+
+    // 六自由度
+    doc.AddMember("shipSway", keep2(shipSway), alloc);
+    doc.AddMember("shipSurge", keep2(shipSurge), alloc);
+    doc.AddMember("shipHeave", keep2(shipHeave), alloc);
+    doc.AddMember("shipRoll", keep2(shipRoll), alloc);
+    doc.AddMember("shipPitch", keep2(shipPitch), alloc);
+    doc.AddMember("shipYaw", keep2(shipYaw), alloc);
+
+    // 船头加速度数组
+    Value bowArr(kArrayType);
+    bowArr.PushBack(keep2(bowX), alloc);
+    bowArr.PushBack(keep2(bowY), alloc);
+    bowArr.PushBack(keep2(bowZ), alloc);
+    doc.AddMember("bowAcceleration", bowArr, alloc);
+
+    // 船尾加速度数组
+    Value sternArr(kArrayType);
+    sternArr.PushBack(keep2(sternX), alloc);
+    sternArr.PushBack(keep2(sternY), alloc);
+    sternArr.PushBack(keep2(sternZ), alloc);
+    doc.AddMember("sternAcceleration", sternArr, alloc);
+
+    // 序列化输出，自动两位小数
+    StringBuffer buf;
+    TwoDecimalWriter<StringBuffer> writer(buf);
+    doc.Accept(writer);
+
+    return std::string(buf.GetString());
+
 }
 
 std::string IndustrialMqttClient::buildDeviceStatusJson(const std::string& deviceIp,
