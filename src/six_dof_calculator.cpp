@@ -356,14 +356,14 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     std::lock_guard<std::mutex> lock(base_mtx_);
     bool need_update_base = false;
 
-    // 分支1：无基准帧，强制更新
+    // 无基准帧，强制更新
     if (!fuse_pc_base_.cloud || fuse_pc_base_.cloud->empty())
     {
         need_update_base = true;
     }
     else
     {
-        // 分支2：判断是否超过设定分钟
+        // 判断是否超过设定分钟
         auto delta = now_tp - last_base_update_tp_;
         if (delta >= interval_dur)
         {
@@ -377,7 +377,7 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
         fuse_pc_base_ = c;
         last_base_update_tp_ = now_tp;
         r.confidence = 1.00f;
-        std::string log_msg = "更新基准帧，间隔=" + to_string(interval_min) + "分钟";
+        std::string log_msg = "更新基准帧，间隔=" + to_string(interval_min) + "秒钟";
         Logger::instance().info(log_msg);
 
         if(!base_extremum_calc_) {
@@ -429,25 +429,16 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     Eigen::Affine3f T_local;
     T_local.matrix() = fine_T_local;
 
-    // 最终码头坐标系下船舶整体位姿变换
     Eigen::Affine3f T_ship_dock;
+    Eigen::Affine3f T_A2dock_inv = T_A2dock_.inverse();
+    Eigen::Affine3f T_B2dock_inv = T_B2dock_.inverse();
 
     if (c.lidar_id == "B") {
-        // 输入点云来自雷达B：T_local 是B局部坐标系的船舶变换，需要转换到A局部坐标系
-        Eigen::Affine3f T_B2A = T_A2dock_.inverse() * T_B2dock_;
-        Eigen::Affine3f T_A2B_ = T_B2A.inverse();
-
-        Eigen::Affine3f T_fine_A = T_A2B_.inverse() * T_local * T_A2B_;
-        // A局部变换映射到码头全局
-        Eigen::Affine3f T_A2dock_inv = T_A2dock_.inverse();
-        T_ship_dock = T_A2dock_ * T_fine_A * T_A2dock_inv;
-    }
-    else if (c.lidar_id == "A")
-    {
-        // 输入点云来自雷达A，局部变换直接为A系变换
-        Eigen::Affine3f T_fine_A = T_local;
-        Eigen::Affine3f T_A2dock_inv = T_A2dock_.inverse();
-        T_ship_dock = T_A2dock_ * T_fine_A * T_A2dock_inv;
+        // B雷达：直接相似变换，无需中转A
+        T_ship_dock = T_B2dock_ * T_local * T_B2dock_inv;
+    } else if (c.lidar_id == "A") {
+        // A雷达标准相似变换
+        T_ship_dock = T_A2dock_ * T_local * T_A2dock_inv;
     } else {
         std::string err_msg = "未知雷达ID: " + c.lidar_id;
         Logger::instance().info(err_msg);

@@ -1,6 +1,36 @@
 
 ## 源码编译
 
+### 依赖库安装
+
+flann 库比阿姨报错处理：
+
+报错：
+
+CMake Error at /src/cpp/CMakeLists.txt:33 (add_library):
+    No SOURCES given to target: flann_cpp
+
+CMake Error at /src/cpp/CMakeLists.txt:91 (add_library):
+    No SOURCES given to target: flann
+
+解决方案：
+
+cd flann
+touch src/cpp/empty.cpp
+
+gedit src/cpp/CMakeLists.txt
+
+33行修改
+add_library(flann_cpp SHARED " ")
+add_library(flann_cpp SHARED empty.cpp)
+
+91行修改
+add_library(flann SHARED " ")
+add_library(flann SHARED empty.cpp)
+
+清空build文件夹再次编译
+
+
 ### yaml-cpp
 
 mkdir build && cd build
