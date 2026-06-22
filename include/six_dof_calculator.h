@@ -20,6 +20,7 @@ struct SixDofResult {
     float tx, ty, tz;
     float rx, ry, rz;
     double confidence;
+    double ship_length;
 };
 
 class SixDofCalculator {
@@ -59,6 +60,10 @@ private:
 
     std::chrono::steady_clock::time_point last_base_update_tp_;
     std::mutex base_mtx_; // 多线程保护基准帧
+
+    float base_min_x_body_ = 0.0f;
+    float base_max_x_body_ = 0.0f;
+    bool base_extremum_calc_ = false;
 };
 
 #endif

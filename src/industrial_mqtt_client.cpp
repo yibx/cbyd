@@ -223,7 +223,6 @@ void IndustrialMqttClient::onMqttEvent(mqtt_client_t* cli, int type)
             if (client->conn_callback_) client->conn_callback_(false);
             break;
         case MQTT_TYPE_PUBACK:
-            std::cout << "[MQTT] Publish acknowledged" << std::endl;
             break;
         default:
             break;

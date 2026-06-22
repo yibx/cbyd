@@ -96,7 +96,7 @@ void SixDofCalculator::workerThread(int core_id)
         task();
 	    auto end = std::chrono::high_resolution_clock::now();
         double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
-	    std::cout << "single: " << elapsed_ms << std::endl;
+	    //std::cout << "single: " << elapsed_ms << std::endl;
     }
 }
 
@@ -379,6 +379,33 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
         r.confidence = 1.00f;
         std::string log_msg = "更新基准帧，间隔=" + to_string(interval_min) + "分钟";
         Logger::instance().info(log_msg);
+
+        if(!base_extremum_calc_) {
+            PointCloudT::Ptr base_cloud = fuse_pc_base_.cloud;
+            if (base_cloud && !base_cloud->empty())
+            {
+                // 基准帧位姿：此时船舶相对基准无运动，T=单位矩阵
+                Eigen::Matrix3f R_base = Eigen::Matrix3f::Identity();
+                Eigen::Vector3f t_base(0,0,0);
+                Eigen::Matrix3f R_T = R_base.transpose();
+
+                float minXb = 1e9f;
+                float maxXb = -1e9f;
+                for (const auto& pt : *base_cloud)
+                {
+                    Eigen::Vector3f pg(pt.x, pt.y, pt.z);
+                    // 全局点转到船体局部坐标系
+                    Eigen::Vector3f pb = R_T * (pg - t_base);
+                    if (pb.x() < minXb) minXb = pb.x();
+                    if (pb.x() > maxXb) maxXb = pb.x();
+                }
+                // 缓存极值
+                base_min_x_body_ = minXb;
+                base_max_x_body_ = maxXb;
+                base_extremum_calc_ = true;
+                Logger::instance().info("基准船体X范围 min:" + std::to_string(minXb) + " max:" + std::to_string(maxXb));
+            }
+        }
     }
 
     //PointCloudT::Ptr src = preprocess(c.cloud);
@@ -388,7 +415,7 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     PointCloudT::Ptr src = c.cloud;
     PointCloudT::Ptr dst = fuse_pc_base_.cloud;
 
-    std::cout << "src size:" << src->size()  << std::endl;
+    //std::cout << "src size:" << src->size()  << std::endl;
 
     if (src->empty() || dst->empty()) {
         return r;
@@ -434,7 +461,6 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     // 分解XYZ欧拉角（码头全局坐标系船舶姿态）
     float roll, pitch, yaw;
     getEulerAngles(R_ship, roll, pitch, yaw);
-
     // 填充结果：tx/ty/tz 码头坐标系厘米，rx/ry/rz 欧拉角（rad），confidence 简单置信度
     r.lidar_ip = c.lidar_ip;
     r.lidar_id = c.lidar_id;
@@ -445,6 +471,7 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     r.ty = t_ship.y() * 100;
     r.tz = t_ship.z() * 100;
     r.confidence = 0.95f;
+    r.ship_length = base_max_x_body_ - base_min_x_body_;
               
     return r;
 }

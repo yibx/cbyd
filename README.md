@@ -1,3 +1,56 @@
+
+## 源码编译
+
+### yaml-cpp
+
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DYAML_BUILD_SHARED_LIBS=ON
+
+### libhv
+
+./configure --with-mqtt --with-openssl && make clean && make
+
+### cbyd
+
+1、代码结构
+
+-include
+--common_base.h    
+--data_outputter.h  
+--industrial_mqtt_client.h  
+--lock_free_queue.h  
+--LSSDK                   
+--point_cloud_fuser.h   
+--system_state_manager.h
+--config_loader.h  
+--easylogging++.h   
+--lidar_bg_diff.h           
+--Logger.h           
+--point_cloud_acquirer.h  
+--six_dof_calculator.h  
+--wharf_dock_checker.h
+
+-src
+--config_loader.cpp   
+--easylogging++.cc            
+--lidar_bg_diff.cpp  
+--main.cpp                  
+--point_cloud_fuser.cpp   
+--system_state_manager.cpp
+--data_outputter.cpp  
+--industrial_mqtt_client.cpp  
+--Logger.cpp         
+--point_cloud_acquirer.cpp  
+--six_dof_calculator.cpp  
+--wharf_dock_checker.cpp
+
+2、编译
+
+mkdir build && cd build
+cmake ..
+make -j8
+
+
 ## LidarBgDiff 船舶背景差分监测模块全参数说明和调参指南
 
 ### 一、YAML 全局算法参数总览

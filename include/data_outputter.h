@@ -14,6 +14,15 @@ using namespace std::chrono_literals;
 struct SixDofResult;
 struct SystemError;
 
+const int MAX_HIST = 3;
+
+struct ShipPosRecord
+{
+    uint64_t ts;
+    Eigen::Vector3f bow;    // 船艏全局坐标 m
+    Eigen::Vector3f stern;  // 船尾全局坐标 m
+};
+
 class DataOutputter
 {
 public:
@@ -50,7 +59,18 @@ private:
     
     static void connCallback(bool connected);
 
+    Eigen::Matrix3f eulerXYZToRot(float rx, float ry, float rz);
+
+    void pushHistory(uint64_t ts, const Eigen::Vector3f& bow, const Eigen::Vector3f& stern);
+
+    void calcShipBowSternPos(const SixDofResult& r);
+
+    void getBowSternAcc(float& bX, float& bY, float& bZ, float& sX, float& sY, float& sZ);
+
     // MQTT 实例
     IndustrialMqttClient mqtt_;
     RadarGlobalConfig monitor_cfg_;
+
+    std::deque<ShipPosRecord> pos_history_;
+    std::mutex hist_mtx_;
 };
