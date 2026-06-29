@@ -12,6 +12,11 @@ bool loadLidarConfigs(const std::string& configPath, AllLidarConfigs& outConfigs
             return false;
         }
 
+        // 读取顶层开关 debug_save / ship_monitor
+        outConfigs.debug_save  = config["debug_save"].as<int>(0);
+        outConfigs.ship_monitor= config["ship_monitor"].as<int>(0);
+        outConfigs.save_min= config["save_min"].as<int>(0);
+
         // 解析 lidarA
         if (config["lidarA"].IsDefined())
         {

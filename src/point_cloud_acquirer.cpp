@@ -6,6 +6,7 @@
 #include <pcl/io/pcd_io.h>
 #include "system_state_manager.h"
 #include "Logger.h" 
+#include "file_clean.h"
 
 using SM = SystemStateManager;
 
@@ -53,8 +54,7 @@ bool PointCloudAcquirer::initLidarBgProcessor(LidarBgDiff& proc, int lidar_sel) 
 // 处理单帧点云，返回船舶监测结果
 ShipMonitorResult PointCloudAcquirer::processOneLidarFrame(LidarBgDiff& proc,
                                        PointCloudT::Ptr raw_cloud,
-                                       PointCloudT::Ptr ship_out,
-                                       int lidar_sel) {
+                                       PointCloudT::Ptr ship_out) {
     ShipMonitorResult res = proc.monitorShip(
         raw_cloud,
         ship_out,
@@ -93,11 +93,15 @@ void PointCloudAcquirer::start() {
         Logger::instance().info(err_msg);
         return;
     }
+
     if (is_running_) return;
     is_running_ = true;
 
     thread_radar1_ = std::thread(&PointCloudAcquirer::acquireRadar1Loop, this);
     thread_radar2_ = std::thread(&PointCloudAcquirer::acquireRadar2Loop, this);
+
+    thread_camera1_ = std::thread(&PointCloudAcquirer::acquireCamera1Loop, this);
+    thread_camera2_ = std::thread(&PointCloudAcquirer::acquireCamera2Loop, this);
 }
 
 void PointCloudAcquirer::stop() {
@@ -105,6 +109,9 @@ void PointCloudAcquirer::stop() {
 
     if (thread_radar1_.joinable()) thread_radar1_.join();
     if (thread_radar2_.joinable()) thread_radar2_.join();
+
+    if (thread_camera1_.joinable()) thread_camera1_.join();
+    if (thread_camera2_.joinable()) thread_camera2_.join();
 }
 
 // ------------------------------
@@ -118,12 +125,15 @@ void PointCloudAcquirer::acquireRadar1Loop() {
     LidarDataA->LidarStart();
 
     int try_get_cloud = 0;
-#ifdef SHIP_MONITOR
-    LidarBgDiff bg_proc;
-    if (!initLidarBgProcessor(bg_proc, 0)) {
-        return;
+
+    // 线程内部
+    if (lidarCfg_.ship_monitor) {
+        if (!initLidarBgProcessor(bg_a_proc_, 0)) {
+            Logger::instance().error("雷达A背景差分初始化失败，船舶监测关闭");
+            lidarCfg_.ship_monitor = 0; 
+        } 
     }
-#endif
+
     while (is_running_) {
         if (!LidarDataA->isFrameOK) {
             this_thread::sleep_for(milliseconds(100));
@@ -156,48 +166,56 @@ void PointCloudAcquirer::acquireRadar1Loop() {
             cloud->push_back(PointT(p.X, p.Y, p.Z));
         }
 
-#ifdef PCD_SAVE_DEBUG
-        std::string pcd_name = "lidarA_single_frame_" + std::to_string(ts) + ".pcd";
-        pcl::io::savePCDFileBinary(pcd_name, *cloud);
-        Logger::instance().info("[INFO] Save one frame to: " + pcd_name);
-#endif
 
-#ifdef SHIP_MONITOR
-        PointCloudT::Ptr ship_out(new PointCloudT);
-        // lidar_sel=0 代表雷达A，内部自动转换A的码头坐标
-        ShipMonitorResult ship_status = processOneLidarFrame(bg_proc, cloud, ship_out, 0);
-        // ship_status 可传递给上层业务/队列，这里仅打印
-        if (ship_status.status == ShipMonitorStatus::SHIP_LEAVE) {
-            std::string log_msg = "[A] Ship left, points: " + std::to_string(ship_status.ship_point_count);
-            Logger::instance().info(log_msg);
-            continue;
-        } else if (ship_status.status == ShipMonitorStatus::SHIP_MOVING) {
-            std::string log_msg = "[A] Ship moving, center_x: " + std::to_string(ship_status.pose.center_x) +
-                              ", center_y: " + std::to_string(ship_status.pose.center_y);
-            Logger::instance().info(log_msg);
-            continue;
-        } else if (ship_status.status == ShipMonitorStatus::SHIP_STABLE) {
-            std::string log_msg = "[A] Ship stable, center_x: " + std::to_string(ship_status.pose.center_x) +
-                              ", center_y: " + std::to_string(ship_status.pose.center_y);
-            Logger::instance().info(log_msg);
+        PointCloudT::Ptr ship_out; // 先空智能指针
+        if (lidarCfg_.ship_monitor) {
+            ship_out.reset(new PointCloudT); // 仅开启船舶监测才分配内存
+            ship_out->reserve(cloud->size());
+            // lidar_sel=0 代表雷达A，内部自动转换A的码头坐标
+            ShipMonitorResult ship_status = processOneLidarFrame(bg_a_proc_, cloud, ship_out);
+            // ship_status 可传递给上层业务/队列，这里仅打印
+            if (ship_status.status == ShipMonitorStatus::SHIP_LEAVE) {
+                std::string log_msg = "[A] Ship left, points: " + std::to_string(ship_status.ship_point_count);
+                Logger::instance().info(log_msg);
+                continue;
+            } else if (ship_status.status == ShipMonitorStatus::SHIP_MOVING) {
+                std::string log_msg = "[A] Ship moving, center_x: " + std::to_string(ship_status.pose.center_x) +
+                                  ", center_y: " + std::to_string(ship_status.pose.center_y);
+                Logger::instance().info(log_msg);
+                continue;
+            } else if (ship_status.status == ShipMonitorStatus::SHIP_STABLE) {
+                std::string log_msg = "[A] Ship stable, center_x: " + std::to_string(ship_status.pose.center_x) +
+                                  ", center_y: " + std::to_string(ship_status.pose.center_y);
+                Logger::instance().info(log_msg);
+            }
         }
-#endif
 
-#ifdef PCD_SAVE_DEBUG
-        pcd_name = "lidarA_split_frame_" + std::to_string(ts) + ".pcd";
-        pcl::io::savePCDFileBinary(pcd_name, *ship_out);
-        Logger::instance().info("[INFO] Save split frame to: " + pcd_name);
-#endif
+        if (lidarCfg_.debug_save) {
+            const std::string pcd_dir = "./pcd_debug";
+            MakeDirLinux(pcd_dir);
+            CleanOldPcdLinux(pcd_dir, lidarCfg_.save_min);
 
-#ifdef SHIP_MONITOR
-        while (!queueA_->enqueue({ lidarCfg_.lidarA.lidar_ip, "A", ts, ship_out }) && is_running_) {
-            this_thread::sleep_for(milliseconds(2));
+            std::string pcd_name = pcd_dir + "/lidarA_single_frame_" + std::to_string(ts) + ".pcd";
+            pcl::io::savePCDFileBinary(pcd_name, *cloud);
+            Logger::instance().info("[INFO] Save one frame to: " + pcd_name);
+
+            if (lidarCfg_.ship_monitor && ship_out) {
+                std::string pcd_name = pcd_dir + "/lidarA_split_frame_" + std::to_string(ts) + ".pcd";
+                pcl::io::savePCDFileBinary(pcd_name, *ship_out);
+                Logger::instance().info("[INFO] Save split frame to: " + pcd_name);
+            }
         }
-#else
-        while (!queueA_->enqueue({ lidarCfg_.lidarA.lidar_ip, "A", ts, cloud }) && is_running_) {
-            this_thread::sleep_for(milliseconds(2));
+
+        if (lidarCfg_.ship_monitor && ship_out) {
+            while (!queueA_->enqueue({ lidarCfg_.lidarA.lidar_ip, "A", ts, ship_out }) && is_running_) {
+                this_thread::sleep_for(milliseconds(2));
+            }
+        } else {
+            while (!queueA_->enqueue({ lidarCfg_.lidarA.lidar_ip, "A", ts, cloud }) && is_running_) {
+                this_thread::sleep_for(milliseconds(2));
+            }
         }
-#endif
+
         this_thread::sleep_for(milliseconds(300));
     }
 
@@ -212,18 +230,27 @@ void PointCloudAcquirer::acquireRadar1Loop() {
 // 雷达 B 独立线程 → 写队列 B
 // ------------------------------
 void PointCloudAcquirer::acquireRadar2Loop() {
-    std::string dev_info = "name:" + lidarCfg_.lidarB.name + ",ip:" + lidarCfg_.lidarB.lidar_ip + ",dev_port:" + std::to_string(lidarCfg_.lidarB.dev_port) + ",data_port:" + std::to_string(lidarCfg_.lidarB.data_port) + ",local_ip:" + lidarCfg_.lidarB.local_ip;
+    std::stringstream ss;
+    ss << "name:" << lidarCfg_.lidarB.name
+       << ",ip:" << lidarCfg_.lidarB.lidar_ip
+       << ",dev_port:" << lidarCfg_.lidarB.dev_port
+       << ",data_port:" << lidarCfg_.lidarB.data_port
+       << ",local_ip:" << lidarCfg_.lidarB.local_ip
+       << ",monitor:" << lidarCfg_.ship_monitor
+       << ",save:" << lidarCfg_.debug_save;
+    std::string dev_info = ss.str();
+
     Logger::instance().info(dev_info);
     GetLidarData* LidarDataB = new GetLidarData_LS();
     LidarDataB->setPortAndIP(lidarCfg_.lidarB.dev_port, lidarCfg_.lidarB.data_port, lidarCfg_.lidarB.local_ip);
     LidarDataB->LidarStart();
 
-#ifdef SHIP_MONITOR
-    LidarBgDiff bg_proc;
-    if (!initLidarBgProcessor(bg_proc, 1)) {
-        return;
+    if (lidarCfg_.ship_monitor) {
+        if (!initLidarBgProcessor(bg_b_proc_, 1)) {
+            Logger::instance().error("雷达B背景差分初始化失败，船舶监测关闭");
+            lidarCfg_.ship_monitor = 0; 
+        } 
     }
-#endif
 
     int try_get_cloud = 0;
     while (is_running_) {
@@ -258,41 +285,50 @@ void PointCloudAcquirer::acquireRadar2Loop() {
              cloud->push_back(PointT(p.X, p.Y, p.Z));
         }
 
-#ifdef SHIP_MONITOR
-        PointCloudT::Ptr ship_out(new PointCloudT);
-        ShipMonitorResult ship_status = processOneLidarFrame(bg_proc, cloud, ship_out, 1);
-        if (ship_status.status == ShipMonitorStatus::SHIP_LEAVE) {
-            Logger::instance().info("[B] Ship left, points: " + std::to_string(ship_status.ship_point_count));
-            continue;
-        } else if (ship_status.status == ShipMonitorStatus::SHIP_MOVING) {
-            Logger::instance().info("[B] Ship moving, center_x: " + std::to_string(ship_status.pose.center_x) +
-                                    ", center_y: " + std::to_string(ship_status.pose.center_y));
-            continue;
-        } else if (ship_status.status == ShipMonitorStatus::SHIP_STABLE) {
-            Logger::instance().info("[B] Ship stable, center_x: " + std::to_string(ship_status.pose.center_x) +
-                                    ", center_y: " + std::to_string(ship_status.pose.center_y));
+        PointCloudT::Ptr ship_out; // 先空智能指针
+        if (lidarCfg_.ship_monitor) {
+            ship_out.reset(new PointCloudT); // 仅开启船舶监测才分配内存
+            ship_out->reserve(cloud->size());
+            ShipMonitorResult ship_status = processOneLidarFrame(bg_b_proc_, cloud, ship_out);
+            if (ship_status.status == ShipMonitorStatus::SHIP_LEAVE) {
+                Logger::instance().info("[B] Ship left, points: " + std::to_string(ship_status.ship_point_count));
+                continue;
+            } else if (ship_status.status == ShipMonitorStatus::SHIP_MOVING) {
+                Logger::instance().info("[B] Ship moving, center_x: " + std::to_string(ship_status.pose.center_x) +
+                                        ", center_y: " + std::to_string(ship_status.pose.center_y));
+                continue;
+            } else if (ship_status.status == ShipMonitorStatus::SHIP_STABLE) {
+                Logger::instance().info("[B] Ship stable, center_x: " + std::to_string(ship_status.pose.center_x) +
+                                        ", center_y: " + std::to_string(ship_status.pose.center_y));
+            }
         }
-#endif
 
-#ifdef PCD_SAVE_DEBUG
-        std::string pcd_name = "lidarB_single_frame_" + std::to_string(ts) + ".pcd";
-        pcl::io::savePCDFileBinary(pcd_name, *cloud);
-        Logger::instance().info("[INFO] Save one frame to: " + pcd_name);
+        if (lidarCfg_.debug_save) {
+            const std::string pcd_dir = "./pcd_debug";
+            MakeDirLinux(pcd_dir);
+            // 保留5分钟 = 300秒
+            CleanOldPcdLinux(pcd_dir, 300);
 
-        pcd_name = "lidarB_split_frame_" + std::to_string(ts) + ".pcd";
-        pcl::io::savePCDFileBinary(pcd_name, *ship_out);
-        Logger::instance().info("[INFO] Save split frame to: " + pcd_name);
-#endif
+            std::string pcd_name = pcd_dir + "/lidarB_single_frame_" + std::to_string(ts) + ".pcd";
+            pcl::io::savePCDFileBinary(pcd_name, *cloud);
+            Logger::instance().info("[INFO] Save one frame to: " + pcd_name);
 
-#ifdef SHIP_MONITOR
-        while (!queueB_->enqueue({ lidarCfg_.lidarB.lidar_ip, "B", ts, ship_out }) && is_running_) {
-            this_thread::sleep_for(milliseconds(2));
+            if (lidarCfg_.ship_monitor && ship_out) {
+                pcd_name = pcd_dir + "/lidarB_split_frame_" + std::to_string(ts) + ".pcd";
+                pcl::io::savePCDFileBinary(pcd_name, *ship_out);
+                Logger::instance().info("[INFO] Save split frame to: " + pcd_name);
+            }
         }
-#else
-        while (!queueB_->enqueue({ lidarCfg_.lidarB.lidar_ip, "B", ts, cloud }) && is_running_) {
-            this_thread::sleep_for(milliseconds(2));
+
+        if (lidarCfg_.ship_monitor && ship_out) {
+            while (!queueB_->enqueue({ lidarCfg_.lidarB.lidar_ip, "B", ts, ship_out }) && is_running_) {
+                this_thread::sleep_for(milliseconds(3));
+            }
+        } else {
+            while (!queueB_->enqueue({ lidarCfg_.lidarB.lidar_ip, "B", ts, cloud }) && is_running_) {
+                this_thread::sleep_for(milliseconds(3));
+            }
         }
-#endif
         this_thread::sleep_for(milliseconds(300));
     }
 
@@ -300,5 +336,23 @@ void PointCloudAcquirer::acquireRadar2Loop() {
 
     if (LidarDataB) {
     	delete LidarDataB;
+    }
+}
+
+void PointCloudAcquirer::acquireCamera1Loop() {
+
+    while (is_running_) {
+        // 接收左相机
+        std::cout << "accept left camera info" << std::endl;
+        this_thread::sleep_for(seconds(30));
+    }
+}
+
+void PointCloudAcquirer::acquireCamera2Loop() {
+
+    while (is_running_) {
+        // 接受右相机
+        std::cout << "accept right camera info" << std::endl;
+        this_thread::sleep_for(seconds(30));
     }
 }

@@ -3,6 +3,8 @@
 #include <iomanip>
 #include <sstream>
 #include "Logger.h"
+#include <string>
+#include <regex>
 
 DataOutputter::DataOutputter(LockFreeRingQueue<SixDofResult>* q3)
     : queue3_(q3) {
@@ -250,6 +252,16 @@ bool ConcreteDataOutputter::pushRealTimeData(const SixDofResult& r) {
     }
 }
 
+std::string ExtractIpByRegex(const std::string& msg) {
+    std::regex ipv4_regex(R"((\d{1,3}\.){3}\d{1,3})");
+    std::smatch match;
+    if (std::regex_search(msg, match, ipv4_regex))
+    {
+        return match.str();
+    }
+    return "";
+}
+
 bool ConcreteDataOutputter::writeErrorToDatabase(const SystemError& err) {
     std::cout << "[DB-ERROR] 模块:" << static_cast<int>(err.module)
         << " 等级:" << static_cast<int>(err.level)
@@ -274,7 +286,8 @@ bool ConcreteDataOutputter::pushRealTimeError(const SystemError& err, const std:
     std::ostringstream time_ss;
     time_ss << std::put_time(&tm_now, "%Y-%m-%d %H:%M:%S");
     std::string time_str = time_ss.str();
-    std::string statusJson = mqtt_.buildDeviceStatusJson(monitor_cfg_.mqtt_cfg.host, time_str, 1);
+    std::string ip = ExtractIpByRegex(err.message);
+    std::string statusJson = mqtt_.buildDeviceStatusJson(ip, time_str, 0);
     std::cout << "[MQTT] publish device status: " << statusJson << std::endl;
     mqtt_.publish(statusJson, monitor_cfg_.mqtt_cfg.dev_status_topic);
     return true;

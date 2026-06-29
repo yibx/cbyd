@@ -8,16 +8,16 @@
 
 // ÏµÍ³×´Ì¬
 enum class SystemState {
-    IDLE,           // ¿ÕÏÐ
-    INITIALIZING,   // ³õÊ¼»¯ÖÐ
-    RUNNING,        // Õý³£ÔËÐÐ
-    PAUSED,         // ÔÝÍ£
-    RUNERROR,       // ÔËÐÐ´íÎó
-    FATAL_ERROR,    // ÖÂÃü´íÎó£¬ÐèÖØÆô
-    EXITING         // ÍË³öÖÐ
+    IDLE,           // ï¿½ï¿½ï¿½ï¿½
+    INITIALIZING,   // ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½
+    RUNNING,        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    PAUSED,         // ï¿½ï¿½Í£
+    RUNERROR,       // ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½
+    FATAL_ERROR,    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    EXITING         // ï¿½Ë³ï¿½ï¿½ï¿½
 };
 
-// ÏµÍ³Ä£¿é
+// ÏµÍ³Ä£ï¿½ï¿½
 enum class ModuleType {
     ACQUIRER,
     FUSER,
@@ -25,15 +25,15 @@ enum class ModuleType {
     OUTPUTTER
 };
 
-// ´íÎóµÈ¼¶
+// ï¿½ï¿½ï¿½ï¿½È¼ï¿½
 enum class ErrorLevel {
     STATUS_OK = 0,
-    STATUS_WARNING = 1,    // ¾¯¸æ£¬²»Ó°ÏìÔËÐÐ
-    STATUS_ERROR = 2,      // ´íÎó£¬¿É×Ô¶¯»Ö¸´
-    STATUS_FATAL = 3       // ÖÂÃü£¬±ØÐëÍ£Ö¹
+    STATUS_WARNING = 1,    // ï¿½ï¿½ï¿½æ£¬ï¿½ï¿½Ó°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    STATUS_ERROR = 2,      // ï¿½ï¿½ï¿½ó£¬¿ï¿½ï¿½Ô¶ï¿½ï¿½Ö¸ï¿½
+    STATUS_FATAL = 3       // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í£Ö¹
 };
 
-// ´íÎóÐÅÏ¢
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 struct SystemError {
     ModuleType module;
     ErrorLevel level;
@@ -42,7 +42,7 @@ struct SystemError {
     bool need_push;
 };
 
-// ×´Ì¬»ú + ´íÎóÍÆËÍ 
+// ×´Ì¬ï¿½ï¿½ + ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
 class SystemStateManager {
 public:
     static SystemStateManager& instance() {
@@ -50,22 +50,22 @@ public:
         return inst;
     }
 
-    // ×´Ì¬¿ØÖÆ
+    // ×´Ì¬ï¿½ï¿½ï¿½ï¿½
     void setState(SystemState state);
     SystemState getState() const;
 
-    // Ä£¿é´íÎóÉÏ±¨
+    // Ä£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï±ï¿½
     void reportError(ModuleType module, ErrorLevel level, const std::string& msg);
 
-    // ×¢²áÍÆËÍ»Øµ÷
+    // ×¢ï¿½ï¿½ï¿½ï¿½ï¿½Í»Øµï¿½
     void setErrorPushCallback(std::function<bool(const SystemError&)> cb);
     void setDatabaseWriteCallback(std::function<bool(const SystemError&)> cb);
 
-    // »ñÈ¡×î½üÒ»´Î´íÎó
+    // ï¿½ï¿½È¡ï¿½ï¿½ï¿½Ò»ï¿½Î´ï¿½ï¿½ï¿½
     SystemError getLastError() const;
     bool hasError() const;
 
-    // Çå³ý´íÎó
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     void clearError();
 
 private:

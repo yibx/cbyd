@@ -23,6 +23,10 @@ struct AllLidarConfigs
 {
     LidarConfig lidarA;
     LidarConfig lidarB;
+    // 顶层开关
+    int debug_save = 0;
+    int ship_monitor = 0;
+    int save_min = 0;
 };
 
 /**

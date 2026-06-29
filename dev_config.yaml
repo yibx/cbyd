@@ -12,15 +12,7 @@ lidarB:
   data_port: 2371
   local_ip: "192.168.0.16"
 
-# MQTT上报服务配置
-mqtt:
-  host: "192.168.0.31"
-  port: 1883
-  username: "rabbitMq"
-  password: "huazhi2026"
-  default_topic: "/ship/data"
-  dev_status_topic: "/dev/status"
-  qos: 1
-  reconnect_interval: 3
-  berth_id: "2056304240267644930"
+debug_save: 1
+ship_monitor: 1
+save_min: 300
 

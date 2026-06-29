@@ -36,8 +36,11 @@ private:
     void acquireRadar1Loop();  
     void acquireRadar2Loop();  
 
+    void acquireCamera1Loop();  
+    void acquireCamera2Loop();
+
     bool initLidarBgProcessor(LidarBgDiff& proc, int lidar_sel);
-    ShipMonitorResult processOneLidarFrame(LidarBgDiff& proc, const PointCloudT::Ptr raw_cloud, PointCloudT::Ptr ship_out, int lidar_sel);
+    ShipMonitorResult processOneLidarFrame(LidarBgDiff& proc, const PointCloudT::Ptr raw_cloud, PointCloudT::Ptr ship_out);
 
 private:
     LockFreeRingQueue<RawPointCloud>* queueA_;
@@ -47,10 +50,15 @@ private:
 
     std::thread thread_radar1_;
     std::thread thread_radar2_;
+
+    std::thread thread_camera1_;
+    std::thread thread_camera2_;
     std::atomic<bool> is_running_{false};
 
     AllLidarConfigs lidarCfg_;
     RadarGlobalConfig monitor_cfg_;
+    LidarBgDiff bg_a_proc_;
+    LidarBgDiff bg_b_proc_;
 };
 
 #endif
