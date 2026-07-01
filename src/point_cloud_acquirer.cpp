@@ -13,20 +13,6 @@ using SM = SystemStateManager;
 using namespace std;
 using namespace std::chrono;
 
-/**
- * 保存pcd文件的调试开关
- * 开启后会在当前目录生成每帧原始点云和分割后船舶点云的pcd文件，文件名包含时间戳，用于分析问题
- * 注意：开启后会增加磁盘IO，可能影响性能，仅建议在调试阶段使用
- */
-//#define PCD_SAVE_DEBUG 1
-
-/**
- * 船舶监测功能开关
- * 开启后会在acquirer内部进行背景差分处理，输出船舶监测结果（状态+位置）
- * 注意：开启后会增加CPU负载
- */
-//#define SHIP_MONITOR 2
-
 #include "lidar_bg_diff.h"
 #include <Eigen/Dense>
 #include <pcl/common/transforms.h>
@@ -306,8 +292,7 @@ void PointCloudAcquirer::acquireRadar2Loop() {
         if (lidarCfg_.debug_save) {
             const std::string pcd_dir = "./pcd_debug";
             MakeDirLinux(pcd_dir);
-            // 保留5分钟 = 300秒
-            CleanOldPcdLinux(pcd_dir, 300);
+            CleanOldPcdLinux(pcd_dir, lidarCfg_.save_min);
 
             std::string pcd_name = pcd_dir + "/lidarB_single_frame_" + std::to_string(ts) + ".pcd";
             pcl::io::savePCDFileBinary(pcd_name, *cloud);

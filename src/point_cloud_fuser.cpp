@@ -91,7 +91,7 @@ void PointCloudFuser::fuseLoop() {
 
                 // 入队给6DoF
                 while (!queueOut_->enqueue(fused_deep) && is_running_) {
-                    this_thread::sleep_for(milliseconds(2));
+                    this_thread::sleep_for(milliseconds(10));
                 }
 
                 // 清除已配对帧
@@ -132,7 +132,7 @@ void PointCloudFuser::fuseLoop() {
             fused.valid_points = fused.cloud->size();
 
             while (!queueOut_->enqueue(fused) && is_running_) {
-                this_thread::sleep_for(milliseconds(2));
+                this_thread::sleep_for(milliseconds(10));
             }
 
             cacheA_.erase(cacheA_.begin());
@@ -151,7 +151,7 @@ void PointCloudFuser::fuseLoop() {
             fused.valid_points = fused.cloud->size();
 
             while (!queueOut_->enqueue(fused) && is_running_) {
-                this_thread::sleep_for(milliseconds(2));
+                this_thread::sleep_for(milliseconds(10));
             }
 
             cacheB_.erase(cacheB_.begin());
