@@ -227,10 +227,20 @@ bool ConcreteDataOutputter::enqueueWithDropOld(LockFreeRingQueue<T>& queue, cons
 bool ConcreteDataOutputter::writeToDatabase(const SixDofResult& r) {
     DbShipData task;
     task.res = r;
+    std::string log_msg = "入库任务：雷达ID=" + r.lidar_id + " 时间戳=" + std::to_string(r.timestamp) +
+        " tx=" + std::to_string(r.tx) + " ty=" + std::to_string(r.ty) + " tz=" + std::to_string(r.tz) +
+        " rx=" + std::to_string(r.rx) + " ry=" + std::to_string(r.ry) + " rz=" + std::to_string(r.rz) +
+        " confidence=" + std::to_string(r.confidence);
+    Logger::instance().info("[DB-INFO] " + log_msg);
     return enqueueWithDropOld(db_task_queue_, task, QueueLimit::DB_MAX_QUEUE, "DB任务队列", false);
 }
 
 bool ConcreteDataOutputter::pushRealTimeData(const SixDofResult& r) {
+    std::string log_msg = "实时数据投递：雷达ID=" + r.lidar_id + " 时间戳=" + std::to_string(r.timestamp) +
+        " tx=" + std::to_string(r.tx) + " ty=" + std::to_string(r.ty) + " tz=" + std::to_string(r.tz) +
+        " rx=" + std::to_string(r.rx) + " ry=" + std::to_string(r.ry) + " rz=" + std::to_string(r.rz) +
+        " confidence=" + std::to_string(r.confidence);
+    Logger::instance().info("[MQTT-INFO] " + log_msg);
     return enqueueWithDropOld(solve_task_queue_, r, QueueLimit::SOLVE_MAX_QUEUE, "船体解算队列", false);
 }
 
@@ -364,7 +374,8 @@ void ConcreteDataOutputter::mqttWorkerLoop() {
                             pkg.bX, pkg.bY, pkg.bZ,
                             pkg.sX, pkg.sY, pkg.sZ
                         );
-                        mqtt_.publish(json, monitor_cfg_.mqtt_cfg.dev_status_topic); // 异步发送无阻塞
+                        std::cout << "MQTT推送数据包: " << json << std::endl;
+                        mqtt_.publish(json, monitor_cfg_.mqtt_cfg.dev_status_topic);
                     }
                 } catch (...) {
                     SM::instance().reportError(ModuleType::OUTPUTTER, ErrorLevel::STATUS_WARNING, "MQTT业务数据组装/发送异常");
@@ -378,6 +389,7 @@ void ConcreteDataOutputter::mqttWorkerLoop() {
                 try {
                     if (mqtt_.isConnected()) {
                         std::string statusJson = mqtt_.buildDeviceStatusJson(err_msg.ip, err_msg.time_str, err_msg.err_code);
+                        std::cout << "MQTT推送错误数据包: " << statusJson << std::endl;
                         mqtt_.publish(statusJson, monitor_cfg_.mqtt_cfg.dev_status_topic);
                     }
                 } catch (...) {

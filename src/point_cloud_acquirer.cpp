@@ -100,6 +100,22 @@ void PointCloudAcquirer::stop() {
     if (thread_camera2_.joinable()) thread_camera2_.join();
 }
 
+// 读取PCD文件，成功返回点云智能指针，失败返回空指针
+PointCloudT::Ptr loadPcdFile(const std::string& pcd_path) {
+    PointCloudT::Ptr cloud(new PointCloudT);
+
+    // 调用PCL读取接口
+    int ret = pcl::io::loadPCDFile<PointT>(pcd_path, *cloud);
+    if (ret == -1)
+    {
+        std::cerr << "读取PCD失败，文件路径：" << pcd_path << std::endl;
+        return nullptr;
+    }
+
+    std::cout << "PCD读取成功，点云数量：" << cloud->size() << std::endl;
+    return cloud;
+}
+
 // ------------------------------
 // 雷达 A 独立线程 → 写队列 A
 // ------------------------------
@@ -119,8 +135,10 @@ void PointCloudAcquirer::acquireRadar1Loop() {
             lidarCfg_.ship_monitor = 0; 
         } 
     }
+    PointCloudT::Ptr cloud = loadPcdFile("/home/hz/CBYD/bg_berth/L_A_Lidar_bg.pcd");
 
     while (is_running_) {
+#if 0
         if (!LidarDataA->isFrameOK) {
             this_thread::sleep_for(milliseconds(100));
 	        if (try_get_cloud > 100) {
@@ -153,9 +171,9 @@ void PointCloudAcquirer::acquireRadar1Loop() {
         }
 
 
-        PointCloudT::Ptr ship_out; // 先空智能指针
+        PointCloudT::Ptr ship_out; 
         if (lidarCfg_.ship_monitor) {
-            ship_out.reset(new PointCloudT); // 仅开启船舶监测才分配内存
+            ship_out.reset(new PointCloudT); // 开启船舶监测才分配内存
             ship_out->reserve(cloud->size());
             // lidar_sel=0 代表雷达A，内部自动转换A的码头坐标
             ShipMonitorResult ship_status = processOneLidarFrame(bg_a_proc_, cloud, ship_out);
@@ -201,8 +219,13 @@ void PointCloudAcquirer::acquireRadar1Loop() {
                 this_thread::sleep_for(milliseconds(2));
             }
         }
+#endif
+        
+        while (!queueA_->enqueue({ lidarCfg_.lidarA.lidar_ip, "A", 19999999999, cloud }) && is_running_) {
+            this_thread::sleep_for(milliseconds(2));
+        }
 
-        this_thread::sleep_for(milliseconds(300));
+        this_thread::sleep_for(milliseconds(30));
     }
 
     Logger::instance().info(lidarCfg_.lidarA.name + " exit, ip:" + lidarCfg_.lidarA.lidar_ip);
@@ -237,9 +260,11 @@ void PointCloudAcquirer::acquireRadar2Loop() {
             lidarCfg_.ship_monitor = 0; 
         } 
     }
+    PointCloudT::Ptr cloud = loadPcdFile("/home/hz/CBYD/bg_berth/L_B_Lidar_bg.pcd");
 
     int try_get_cloud = 0;
     while (is_running_) {
+#if 0
         if (!LidarDataB->isFrameOK) {
             this_thread::sleep_for(milliseconds(100));
             if (try_get_cloud > 100) {
@@ -314,7 +339,11 @@ void PointCloudAcquirer::acquireRadar2Loop() {
                 this_thread::sleep_for(milliseconds(3));
             }
         }
-        this_thread::sleep_for(milliseconds(300));
+#endif
+        while (!queueB_->enqueue({ lidarCfg_.lidarB.lidar_ip, "B", 19999999999, cloud }) && is_running_) {
+            this_thread::sleep_for(milliseconds(3));
+        }
+        this_thread::sleep_for(milliseconds(35));
     }
 
     Logger::instance().info(lidarCfg_.lidarB.name + " exit, ip:" + lidarCfg_.lidarB.lidar_ip);

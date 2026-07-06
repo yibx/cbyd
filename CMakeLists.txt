@@ -1,9 +1,14 @@
 cmake_minimum_required(VERSION 2.6)
 project(cbyd)
+add_definitions(-DELPP_THREAD_SAFE)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=armv8-a -mtune=native -ffast-math -funroll-loops -fomit-frame-pointer")
 add_definitions(-DEIGEN_NO_DEBUG -DEIGEN_VECTORIZE_NEON -DNDEBUG)
 set(CMAKE_BUILD_TYPE "Debug")
+
+# 全局替换不安全localtime为localtime_r
+#add_compile_definitions(localtime(x)=localtime_r(x, &tm_buf_tmp))
+
 find_package(PCL 1.13.0 REQUIRED)
 find_package(Eigen3 REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS}  ./include  ./third-party/libhv/include ./include/LSSDK/Include ./third-party/yaml/include ./third-party/libhv/include ./third-party/rapidjson/include)

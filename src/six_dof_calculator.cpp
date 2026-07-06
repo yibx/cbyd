@@ -341,6 +341,7 @@ Eigen::Matrix4f fineRegistrationGICP(PointCloudT::Ptr& src, PointCloudT::Ptr& ds
 
 // 六自由度计算主函数
 SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
+
     SixDofResult r;
     r.timestamp = c.timestamp;
     r.tx = r.ty = r.tz = r.rx = r.ry = r.rz = 0.00f;
@@ -452,6 +453,7 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     // 分解XYZ欧拉角（码头全局坐标系船舶姿态）
     float roll, pitch, yaw;
     getEulerAngles(R_ship, roll, pitch, yaw);
+
     // 填充结果：tx/ty/tz 码头坐标系厘米，rx/ry/rz 欧拉角（rad），confidence 简单置信度
     r.lidar_ip = c.lidar_ip;
     r.lidar_id = c.lidar_id;

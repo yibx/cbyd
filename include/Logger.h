@@ -13,14 +13,17 @@ public:
     Logger& operator=(const Logger&) = delete;
 
     // 日志接口
+    // 日志等级接口
     void info(const std::string& msg);
     void warn(const std::string& msg);
     void error(const std::string& msg);
+    void debug(const std::string& msg);
+    void fatal(const std::string& msg);
 
 private:
-    // 私有构造 → 外部无法创建对象（单例核心）
+    // 私有构造/析构，禁止外部创建
     Logger();
-    ~Logger() = default;
+    ~Logger();
 
     // 初始化配置
     void initConfig();
