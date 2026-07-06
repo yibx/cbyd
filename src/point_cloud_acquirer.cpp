@@ -17,6 +17,12 @@ using namespace std::chrono;
 #include <Eigen/Dense>
 #include <pcl/common/transforms.h>
 
+#define MAX_RETRY_LIDAR 100 // 雷达数据获取失败最大重试次数
+#define SLEEP_NO_LIDAR_DATA 100 // 获取雷达数据失败时的休眠时间（毫秒）
+#define SLEEP_FRAME_ERROR 5 // 点云帧异常时的休眠时间（毫秒）
+#define ENTER_LIDAR_TIMEOUT 2 // 雷达数据进入队列的超时时间（毫秒）
+#define DELAY_GET_LIDAR 300 // 雷达数据获取间隔时间（毫秒）
+
 // 初始化背景差分处理器，加载背景点云
 bool PointCloudAcquirer::initLidarBgProcessor(LidarBgDiff& proc, int lidar_sel) {
     proc.setDistanceThreshold(monitor_cfg_.dist_threshold);
@@ -140,8 +146,8 @@ void PointCloudAcquirer::acquireRadar1Loop() {
     while (is_running_) {
 #if 0
         if (!LidarDataA->isFrameOK) {
-            this_thread::sleep_for(milliseconds(100));
-	        if (try_get_cloud > 100) {
+            this_thread::sleep_for(milliseconds(SLEEP_NO_LIDAR_DATA));
+	        if (try_get_cloud > MAX_RETRY_LIDAR) {
                 std::string err_msg = lidarCfg_.lidarA.name + ",ip:" + lidarCfg_.lidarA.lidar_ip + "点云接收超时";
             	SM::instance().reportError(
                 	ModuleType::ACQUIRER,
@@ -158,7 +164,7 @@ void PointCloudAcquirer::acquireRadar1Loop() {
         shared_ptr<vector<MuchLidarData>> temp;
         string info;
         if (!LidarDataA->getLidarPerFrameDate(temp, info) || !temp || temp->empty()) {
-            this_thread::sleep_for(milliseconds(5));
+            this_thread::sleep_for(milliseconds(SLEEP_FRAME_ERROR));
             continue;
         }
 
@@ -212,20 +218,20 @@ void PointCloudAcquirer::acquireRadar1Loop() {
 
         if (lidarCfg_.ship_monitor && ship_out) {
             while (!queueA_->enqueue({ lidarCfg_.lidarA.lidar_ip, "A", ts, ship_out }) && is_running_) {
-                this_thread::sleep_for(milliseconds(2));
+                this_thread::sleep_for(milliseconds(ENTER_LIDAR_TIMEOUT));
             }
         } else {
             while (!queueA_->enqueue({ lidarCfg_.lidarA.lidar_ip, "A", ts, cloud }) && is_running_) {
-                this_thread::sleep_for(milliseconds(2));
+                this_thread::sleep_for(milliseconds(ENTER_LIDAR_TIMEOUT));
             }
         }
 #endif
         
         while (!queueA_->enqueue({ lidarCfg_.lidarA.lidar_ip, "A", 19999999999, cloud }) && is_running_) {
-            this_thread::sleep_for(milliseconds(2));
+            this_thread::sleep_for(milliseconds(ENTER_LIDAR_TIMEOUT));
         }
 
-        this_thread::sleep_for(milliseconds(30));
+        this_thread::sleep_for(milliseconds(DELAY_GET_LIDAR));
     }
 
     Logger::instance().info(lidarCfg_.lidarA.name + " exit, ip:" + lidarCfg_.lidarA.lidar_ip);
@@ -266,7 +272,7 @@ void PointCloudAcquirer::acquireRadar2Loop() {
     while (is_running_) {
 #if 0
         if (!LidarDataB->isFrameOK) {
-            this_thread::sleep_for(milliseconds(100));
+            this_thread::sleep_for(milliseconds(SLEEP_NO_LIDAR_DATA));
             if (try_get_cloud > 100) {
                 std::string err_msg = lidarCfg_.lidarB.name + ",ip:" + lidarCfg_.lidarB.lidar_ip + "点云接收超时";
                 SM::instance().reportError(
@@ -284,7 +290,7 @@ void PointCloudAcquirer::acquireRadar2Loop() {
         shared_ptr<vector<MuchLidarData>> temp;
         string info;
         if (!LidarDataB->getLidarPerFrameDate(temp, info) || !temp || temp->empty()) {
-            this_thread::sleep_for(milliseconds(5));
+            this_thread::sleep_for(milliseconds(SLEEP_FRAME_ERROR));
             continue;
         }
 
@@ -332,18 +338,18 @@ void PointCloudAcquirer::acquireRadar2Loop() {
 
         if (lidarCfg_.ship_monitor && ship_out) {
             while (!queueB_->enqueue({ lidarCfg_.lidarB.lidar_ip, "B", ts, ship_out }) && is_running_) {
-                this_thread::sleep_for(milliseconds(3));
+                this_thread::sleep_for(milliseconds(ENTER_LIDAR_TIMEOUT));
             }
         } else {
             while (!queueB_->enqueue({ lidarCfg_.lidarB.lidar_ip, "B", ts, cloud }) && is_running_) {
-                this_thread::sleep_for(milliseconds(3));
+                this_thread::sleep_for(milliseconds(ENTER_LIDAR_TIMEOUT));
             }
         }
 #endif
         while (!queueB_->enqueue({ lidarCfg_.lidarB.lidar_ip, "B", 19999999999, cloud }) && is_running_) {
-            this_thread::sleep_for(milliseconds(3));
+            this_thread::sleep_for(milliseconds(ENTER_LIDAR_TIMEOUT));
         }
-        this_thread::sleep_for(milliseconds(35));
+        this_thread::sleep_for(milliseconds(DELAY_GET_LIDAR));
     }
 
     Logger::instance().info(lidarCfg_.lidarB.name + " exit, ip:" + lidarCfg_.lidarB.lidar_ip);

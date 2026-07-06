@@ -36,6 +36,9 @@ using PointCloudT = pcl::PointCloud<PointT>;
 #define GICP_LEAF_SIZE 0.05f
 #define GICP_MAX_CORR 0.3f
 
+#define MAX_RETRY_QUEUE 5
+#define MAX_QUEUE_SIZE 30
+
 using FPFHSignature = pcl::FPFHSignature33;
 
 // 输入旋转矩阵 R，输出 欧拉角 (rad)
@@ -50,6 +53,13 @@ void getEulerAngles(const Eigen::Matrix3f& R, float& roll, float& pitch, float& 
 SixDofCalculator::SixDofCalculator(LockFreeRingQueue<FusedPointCloud>* rq_fuse, LockFreeRingQueue<SixDofResult>* rq_sixdof)
     : rq_fuse_(rq_fuse), rq_sixdof_(rq_sixdof), pool_running_(true)
 {
+
+    if (!loadLidarConfigs("../dev_config.yaml", lidarCfg_)){
+        std::string err_msg = "雷达配置加载失败，请检查dev_config.yaml文件";
+        Logger::instance().info(err_msg);
+        return;
+    }
+
     if (!loadRegParam("../reg_config.yaml", regCfg_)){
         std::string err_msg = "算法配置加载失败，请检查reg_config.yaml文件";
         Logger::instance().info(err_msg);
@@ -60,6 +70,10 @@ SixDofCalculator::SixDofCalculator(LockFreeRingQueue<FusedPointCloud>* rq_fuse, 
         Logger::instance().info(err_msg);
         return;
     }
+    if (lidarCfg_.debug_save) {
+        initFusionCsv();
+    }
+
     // 获取雷达A到dock的变换矩阵
     T_A2dock_ = getLidarATrans(monitor_cfg_.lidarA);
     // 获取雷达B到dock的变换矩阵
@@ -92,10 +106,10 @@ void SixDofCalculator::workerThread(int core_id)
             task = move(tasks_.front());
             tasks_.pop();
         }
-	    auto start = std::chrono::high_resolution_clock::now();
+	    //auto start = std::chrono::high_resolution_clock::now();
         task();
-	    auto end = std::chrono::high_resolution_clock::now();
-        double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
+	    //auto end = std::chrono::high_resolution_clock::now();
+        //double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
 	    //std::cout << "single: " << elapsed_ms << std::endl;
     }
 }
@@ -130,19 +144,18 @@ void SixDofCalculator::calcLoop() {
         {
 	        {
                 lock_guard<mutex> lock(task_mtx_);
-	        	if(tasks_.size() >= 30) {
+	        	if(tasks_.size() >= MAX_QUEUE_SIZE) {
 	        		tasks_.pop();
 	        	}
                 tasks_.emplace([this, c = move(c)]() {
                     auto res = calculateSixDof(c);
 		    	    int retry = 0;
-		    	    const int max_retry = 10;
-                    while (!rq_sixdof_->enqueue(res) && retry < max_retry) {
+                    while (!rq_sixdof_->enqueue(res) && retry < MAX_RETRY_QUEUE) {
                     	this_thread::sleep_for(chrono::milliseconds(3 * (1 << retry)));
 		    		    retry++;
                     }
-		    	    if (retry >= max_retry) {
-                        std::string err_msg = "六自由度结果入队失败，可能导致监测数据丢失" + to_string(max_retry) + "次";
+		    	    if (retry >= MAX_RETRY_QUEUE) {
+                        std::string err_msg = "六自由度结果入队失败，可能导致监测数据丢失" + to_string(MAX_RETRY_QUEUE) + "次";
                         Logger::instance().info(err_msg);
 		    	    }
                 });
@@ -339,6 +352,45 @@ Eigen::Matrix4f fineRegistrationGICP(PointCloudT::Ptr& src, PointCloudT::Ptr& ds
     return gicp.getFinalTransformation();
 }
 
+
+void SixDofCalculator::initFusionCsv() {
+    // 按天命名，和日志保持一致
+    std::time_t ts = std::time(nullptr);
+    std::tm tm_buf{};
+    localtime_r(&ts, &tm_buf);
+    std::ostringstream oss;
+    oss << "six_data_" << std::put_time(&tm_buf, "%Y-%m-%d") << ".csv";
+    std::string csv_path = oss.str();
+
+    fusion_csv_.open(csv_path, std::ios::out | std::ios::app);
+    if (!fusion_csv_.is_open())
+    {
+        Logger::instance().error("无法打开船舶运动数据CSV文件：" + csv_path);
+        return;
+    }
+
+    // 文件为空时写入表头
+    if (fusion_csv_.tellp() == 0)
+    {
+        fusion_csv_ << "local_time,timestamp,lidar_ip,lidar_id,rx(rad),ry(rad),rz(rad),tx(cm),ty(cm),tz(cm),confidence,ship_length\n";
+    }
+    fusion_csv_.flush();
+}
+
+// CSV字段包裹双引号，防止内部逗号干扰
+std::string SixDofCalculator::csvWrap(const std::string& val) {
+    std::string res = val;
+    // 双引号替换成两个双引号csv标准转义
+    size_t pos = 0;
+    while ((pos = res.find('"', pos)) != std::string::npos)
+    {
+        res.insert(pos, "\"");
+        pos += 2;
+    }
+    return "\"" + res + "\"";
+}
+
+
 // 六自由度计算主函数
 SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
 
@@ -465,6 +517,39 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
     r.tz = t_ship.z() * 100;
     r.confidence = 0.95f;
     r.ship_length = base_max_x_body_ - base_min_x_body_;
+
+    if (lidarCfg_.debug_save) {
+        std::lock_guard<std::mutex> lock(fusion_csv_mtx_);
+        if (fusion_csv_.is_open())
+        {
+            // 获取本地系统时间
+            auto now = std::chrono::system_clock::now();
+            std::time_t t_now = std::chrono::system_clock::to_time_t(now);
+            std::tm tm_now{};
+            localtime_r(&t_now, &tm_now);
+            std::ostringstream ts_ss;
+            ts_ss << std::put_time(&tm_now, "%Y-%m-%d %H:%M:%S");
+            std::string local_time = ts_ss.str();
+
+            // 逐字段输出一行csv
+            fusion_csv_
+                << csvWrap(local_time) << ","
+                << csvWrap(local_time) << ","
+                << csvWrap(r.lidar_ip) << ","
+                << csvWrap(r.lidar_id) << ","
+                << r.rx << ","
+                << r.ry << ","
+                << r.rz << ","
+                << r.tx << ","
+                << r.ty << ","
+                << r.tz << ","
+                << r.confidence << ","
+                << r.ship_length << "\n";
+
+            fusion_csv_.flush(); // 强制落盘，防止丢失
+        }
+    }
+
               
     return r;
 }

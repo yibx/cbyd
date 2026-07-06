@@ -46,6 +46,7 @@ private:
     std::atomic<bool> is_running_{false};
 
     RadarGlobalConfig fuse_cfg_;
+    AllLidarConfigs lidarCfg_;
     Eigen::Affine3f T_A2B_;
     Eigen::Affine3f T_B2A_;
 };

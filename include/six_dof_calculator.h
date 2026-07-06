@@ -8,6 +8,11 @@
 #include <vector>
 #include <functional>
 
+#include <fstream>
+#include <sstream>
+#include <chrono>
+#include <iomanip>
+
 #include "lock_free_queue.h"
 #include "point_cloud_fuser.h"
 #include "wharf_dock_checker.h"
@@ -34,6 +39,8 @@ private:
     SixDofResult calculateSixDof(const FusedPointCloud& c);
     void calcLoop();
     void workerThread(int core_id);
+    void initFusionCsv();
+    std::string csvWrap(const std::string& val);
 
     LockFreeRingQueue<FusedPointCloud>* rq_fuse_;
     LockFreeRingQueue<SixDofResult>* rq_sixdof_;
@@ -53,6 +60,7 @@ private:
     std::condition_variable cv_;
     bool pool_running_;
 
+    AllLidarConfigs lidarCfg_;
     RegParam regCfg_;
     RadarGlobalConfig monitor_cfg_;
     Eigen::Affine3f T_A2dock_;
@@ -64,6 +72,10 @@ private:
     float base_min_x_body_ = 0.0f;
     float base_max_x_body_ = 0.0f;
     bool base_extremum_calc_ = false;
+
+    std::ofstream fusion_csv_;
+    std::mutex fusion_csv_mtx_;
+    bool fusion_header_wrote_ = false;
 };
 
 #endif

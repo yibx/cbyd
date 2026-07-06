@@ -227,12 +227,15 @@ bool ConcreteDataOutputter::enqueueWithDropOld(LockFreeRingQueue<T>& queue, cons
 bool ConcreteDataOutputter::writeToDatabase(const SixDofResult& r) {
     DbShipData task;
     task.res = r;
+    /*
     std::string log_msg = "入库任务：雷达ID=" + r.lidar_id + " 时间戳=" + std::to_string(r.timestamp) +
         " tx=" + std::to_string(r.tx) + " ty=" + std::to_string(r.ty) + " tz=" + std::to_string(r.tz) +
         " rx=" + std::to_string(r.rx) + " ry=" + std::to_string(r.ry) + " rz=" + std::to_string(r.rz) +
         " confidence=" + std::to_string(r.confidence);
     Logger::instance().info("[DB-INFO] " + log_msg);
-    return enqueueWithDropOld(db_task_queue_, task, QueueLimit::DB_MAX_QUEUE, "DB任务队列", false);
+    */
+    //return enqueueWithDropOld(db_task_queue_, task, QueueLimit::DB_MAX_QUEUE, "DB任务队列", false);
+    return true;
 }
 
 bool ConcreteDataOutputter::pushRealTimeData(const SixDofResult& r) {
