@@ -42,7 +42,7 @@ ConcreteDataOutputter::ConcreteDataOutputter(LockFreeRingQueue<SixDofResult>* q3
     // 加载配置
     if (!loadMonitorConfig("../monitor_config.yaml", monitor_cfg_)) {
         std::string err_msg = "监测配置加载失败，请检查monitor_config.yaml文件";
-        Logger::instance().error(err_msg);
+        LOG_INFO("DATA_OUTPUT", err_msg);
         return;
     }
 
@@ -58,7 +58,7 @@ ConcreteDataOutputter::ConcreteDataOutputter(LockFreeRingQueue<SixDofResult>* q3
 
     mqtt_.setConnectionStatusCallback(std::bind(&ConcreteDataOutputter::connCallback, this, std::placeholders::_1));
     if (!mqtt_.init(cfg)) {
-        Logger::instance().error("[Outputter FATAL] MQTT 客户端初始化失败");
+        LOG_ERROR("DATA_OUTPUT", "[Outputter FATAL] MQTT 客户端初始化失败");
         SM::instance().reportError(
             ModuleType::OUTPUTTER,
             ErrorLevel::STATUS_ERROR,
@@ -91,7 +91,7 @@ void ConcreteDataOutputter::outputLoop() {
     while (is_running_) {
         try {
             if (SM::instance().getState() == SystemState::FATAL_ERROR) {
-                Logger::instance().info("[Outputter] 系统致命错误，退出输出主线程");
+                LOG_ERROR("DATA_OUTPUT", "[Outputter] 系统致命错误，退出输出主线程");
                 break;
             }
 
@@ -105,7 +105,7 @@ void ConcreteDataOutputter::outputLoop() {
                 task_cv_.wait_for(lk, std::chrono::milliseconds(50));
             }
         } catch (...) {
-            Logger::instance().error("[Outputter outputLoop 主线程捕获未知异常，继续运行");
+            LOG_ERROR("DATA_OUTPUT", "[Outputter outputLoop 主线程捕获未知异常，继续运行");
         }
     }
 }
@@ -118,12 +118,12 @@ void ConcreteDataOutputter::connCallback(bool connected) {
                 ErrorLevel::STATUS_WARNING,
                 "MQTT 连接断开，自动重连中"
             );
-            Logger::instance().warn("[MQTT CONN] MQTT 已断开，自动重连中");
+            LOG_WARN("DATA_OUTPUT", "[MQTT CONN] MQTT 已断开，自动重连中");
         } else {
-            Logger::instance().info("[MQTT CONN] MQTT 已连接");
+            LOG_INFO("DATA_OUTPUT", "[MQTT CONN] MQTT 已连接");
         }
     } catch (...) {
-        Logger::instance().error("[MQTT connCallback 回调异常");
+        LOG_ERROR("DATA_OUTPUT", "[MQTT connCallback 回调异常");
     }
 }
 
@@ -210,11 +210,11 @@ bool ConcreteDataOutputter::enqueueWithDropOld(LockFreeRingQueue<T>& queue, cons
         std::string log = "队列[" + queue_name + "]溢出，丢弃老旧数据条数:" + std::to_string(drop_cnt);
         if (is_low_prio)
         {
-            Logger::instance().warn(log + "（低优先级告警包）");
+            LOG_WARN("DATA_OUTPUT", log + "（低优先级告警包）");
         }
         else
         {
-            Logger::instance().error(log + "，存在内存溢出风险！");
+            LOG_ERROR("DATA_OUTPUT", log + "，存在内存溢出风险！");
             SM::instance().reportError(ModuleType::OUTPUTTER, ErrorLevel::STATUS_WARNING, log);
         }
     }
@@ -243,7 +243,7 @@ bool ConcreteDataOutputter::pushRealTimeData(const SixDofResult& r) {
         " tx=" + std::to_string(r.tx) + " ty=" + std::to_string(r.ty) + " tz=" + std::to_string(r.tz) +
         " rx=" + std::to_string(r.rx) + " ry=" + std::to_string(r.ry) + " rz=" + std::to_string(r.rz) +
         " confidence=" + std::to_string(r.confidence);
-    Logger::instance().info("[MQTT-INFO] " + log_msg);
+    LOG_INFO("DATA_OUTPUT", log_msg);
     return enqueueWithDropOld(solve_task_queue_, r, QueueLimit::SOLVE_MAX_QUEUE, "船体解算队列", false);
 }
 
@@ -264,9 +264,7 @@ bool ConcreteDataOutputter::pushRealTimeError(const SystemError& err) {
 
 bool ConcreteDataOutputter::writeErrorToDatabase(const SystemError& err) {
     try {
-        Logger::instance().info("[DB-ERROR] 模块:" + std::to_string(static_cast<int>(err.module))
-            + " 等级:" + std::to_string(static_cast<int>(err.level))
-            + " 信息:" + err.message);
+        
     } catch (...) {}
     return true;
 }
@@ -283,7 +281,7 @@ std::string ConcreteDataOutputter::ExtractIpByRegex(const std::string& msg) {
 }
 
 void ConcreteDataOutputter::dbWorkerLoop() {
-    Logger::instance().info("[DB Worker] 入库线程启动");
+    LOG_INFO("DATA_OUTPUT", "[DB Worker] 入库线程启动");
     while (worker_running_) {
         try {
             DbShipData task;
@@ -300,15 +298,15 @@ void ConcreteDataOutputter::dbWorkerLoop() {
             }
         } catch (...) {
             // 任意异常捕获，线程不退出
-            Logger::instance().error("[DB Worker 线程捕获全局异常，继续循环消费任务]");
+            LOG_ERROR("DATA_OUTPUT", "[DB Worker] 线程捕获全局异常，继续循环消费任务");
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
-    Logger::instance().info("[DB Worker] 入库线程退出");
+    LOG_INFO("DATA_OUTPUT", "[DB Worker] 入库线程退出");
 }
 
 void ConcreteDataOutputter::solveWorkerLoop() {
-    Logger::instance().info("[Solve Worker] 船体六自由度计算线程启动");
+    LOG_INFO("DATA_OUTPUT", "[Solve Worker] 船体六自由度计算线程启动");
     while (worker_running_) {
         try {
             SixDofResult r;
@@ -352,15 +350,15 @@ void ConcreteDataOutputter::solveWorkerLoop() {
                 task_cv_.wait_for(lk, std::chrono::milliseconds(50));
             }
         } catch (...) {
-            Logger::instance().error("[Solve Worker 线程捕获全局异常，继续循环消费任务]");
+            LOG_ERROR("DATA_OUTPUT", "[Solve Worker] 线程捕获全局异常，继续循环消费任务");
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
-    Logger::instance().info("[Solve Worker] 船体解算线程退出");
+    LOG_INFO("DATA_OUTPUT", "[Solve Worker] 船体解算线程退出");
 }
 
 void ConcreteDataOutputter::mqttWorkerLoop() {
-    Logger::instance().info("[MQTT Worker] 推送线程启动");
+    LOG_INFO("DATA_OUTPUT", "[MQTT Worker] 推送线程启动");
     while (worker_running_) {
         try {
             bool has_task = false;
@@ -377,11 +375,13 @@ void ConcreteDataOutputter::mqttWorkerLoop() {
                             pkg.bX, pkg.bY, pkg.bZ,
                             pkg.sX, pkg.sY, pkg.sZ
                         );
-                        std::cout << "MQTT推送数据包: " << json << std::endl;
+                        std::string log_msg = "MQTT推送数据包: " + json;
+                        LOG_INFO("DATA_OUTPUT", log_msg);
                         mqtt_.publish(json, monitor_cfg_.mqtt_cfg.dev_status_topic);
                     }
                 } catch (...) {
                     SM::instance().reportError(ModuleType::OUTPUTTER, ErrorLevel::STATUS_WARNING, "MQTT业务数据组装/发送异常");
+                    LOG_ERROR("DATA_OUTPUT", "[MQTT Worker] 线程捕获全局异常，继续循环消费任务");
                 }
             }
 
@@ -392,11 +392,11 @@ void ConcreteDataOutputter::mqttWorkerLoop() {
                 try {
                     if (mqtt_.isConnected()) {
                         std::string statusJson = mqtt_.buildDeviceStatusJson(err_msg.ip, err_msg.time_str, err_msg.err_code);
-                        std::cout << "MQTT推送错误数据包: " << statusJson << std::endl;
+                        LOG_INFO("DATA_OUTPUT", "MQTT推送错误数据包: {}", statusJson);
                         mqtt_.publish(statusJson, monitor_cfg_.mqtt_cfg.dev_status_topic);
                     }
                 } catch (...) {
-                    Logger::instance().warn("MQTT错误消息推送异常");
+                    LOG_WARN("DATA_OUTPUT", "[MQTT Worker] 错误消息推送异常");
                 }
             }
 
@@ -405,9 +405,9 @@ void ConcreteDataOutputter::mqttWorkerLoop() {
                 task_cv_.wait_for(lk, std::chrono::milliseconds(50));
             }
         } catch (...) {
-            Logger::instance().error("[MQTT Worker 线程捕获全局异常，继续循环消费任务]");
+            LOG_ERROR("DATA_OUTPUT", "[MQTT Worker] 线程捕获全局异常，继续循环消费任务");
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
-    Logger::instance().info("[MQTT Worker] 推送线程退出");
+    LOG_INFO("DATA_OUTPUT", "[MQTT Worker] 推送线程退出");
 }

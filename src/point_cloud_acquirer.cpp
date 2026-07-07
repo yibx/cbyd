@@ -77,12 +77,12 @@ void PointCloudAcquirer::start() {
     
     if (!loadLidarConfigs("../dev_config.yaml", lidarCfg_)){
         std::string err_msg = "雷达配置加载失败，请检查dev_config.yaml文件";
-        Logger::instance().info(err_msg);
+        LOG_ERROR("ACQUIRER", err_msg);
         return;
     }
     if (!loadMonitorConfig("../monitor_config.yaml", monitor_cfg_)) {
         std::string err_msg = "监测配置加载失败，请检查monitor_config.yaml文件";
-        Logger::instance().info(err_msg);
+        LOG_ERROR("ACQUIRER", err_msg);
         return;
     }
 
@@ -127,7 +127,7 @@ PointCloudT::Ptr loadPcdFile(const std::string& pcd_path) {
 // ------------------------------
 void PointCloudAcquirer::acquireRadar1Loop() {
     std::string dev_info = "name:" + lidarCfg_.lidarA.name + ",ip:" + lidarCfg_.lidarA.lidar_ip + ",dev_port:" + std::to_string(lidarCfg_.lidarA.dev_port) + ",data_port:" + std::to_string(lidarCfg_.lidarA.data_port) + ",local_ip:" + lidarCfg_.lidarA.local_ip;
-    Logger::instance().info(dev_info);
+    LOG_INFO("ACQUIRER", dev_info);
     GetLidarData* LidarDataA = new GetLidarData_LS();
     LidarDataA->setPortAndIP(lidarCfg_.lidarA.dev_port, lidarCfg_.lidarA.data_port, lidarCfg_.lidarA.local_ip);
     LidarDataA->LidarStart();
@@ -137,7 +137,7 @@ void PointCloudAcquirer::acquireRadar1Loop() {
     // 线程内部
     if (lidarCfg_.ship_monitor) {
         if (!initLidarBgProcessor(bg_a_proc_, 0)) {
-            Logger::instance().error("雷达A背景差分初始化失败，船舶监测关闭");
+            LOG_WARN("ACQUIRER", "雷达A背景差分初始化失败，船舶监测关闭");
             lidarCfg_.ship_monitor = 0; 
         } 
     }
@@ -184,19 +184,20 @@ void PointCloudAcquirer::acquireRadar1Loop() {
             // lidar_sel=0 代表雷达A，内部自动转换A的码头坐标
             ShipMonitorResult ship_status = processOneLidarFrame(bg_a_proc_, cloud, ship_out);
             // ship_status 可传递给上层业务/队列，这里仅打印
+            std::string log_msg;
             if (ship_status.status == ShipMonitorStatus::SHIP_LEAVE) {
-                std::string log_msg = "[A] Ship left, points: " + std::to_string(ship_status.ship_point_count);
-                Logger::instance().info(log_msg);
+                log_msg = "[A] Ship left, points: " + std::to_string(ship_status.ship_point_count);
+                LOG_INFO("ACQUIRER", log_msg);
                 continue;
             } else if (ship_status.status == ShipMonitorStatus::SHIP_MOVING) {
-                std::string log_msg = "[A] Ship moving, center_x: " + std::to_string(ship_status.pose.center_x) +
+                log_msg = "[A] Ship moving, center_x: " + std::to_string(ship_status.pose.center_x) +
                                   ", center_y: " + std::to_string(ship_status.pose.center_y);
-                Logger::instance().info(log_msg);
+                LOG_INFO("ACQUIRER", log_msg);
                 continue;
             } else if (ship_status.status == ShipMonitorStatus::SHIP_STABLE) {
-                std::string log_msg = "[A] Ship stable, center_x: " + std::to_string(ship_status.pose.center_x) +
+                log_msg = "[A] Ship stable, center_x: " + std::to_string(ship_status.pose.center_x) +
                                   ", center_y: " + std::to_string(ship_status.pose.center_y);
-                Logger::instance().info(log_msg);
+                LOG_INFO("ACQUIRER", log_msg);
             }
         }
 
@@ -207,12 +208,14 @@ void PointCloudAcquirer::acquireRadar1Loop() {
 
             std::string pcd_name = pcd_dir + "/lidarA_single_frame_" + std::to_string(ts) + ".pcd";
             pcl::io::savePCDFileBinary(pcd_name, *cloud);
-            Logger::instance().info("[INFO] Save one frame to: " + pcd_name);
+            std::string log_msg = "Save one frame to: " + pcd_name;
+            LOG_INFO("ACQUIRER", log_msg);
 
             if (lidarCfg_.ship_monitor && ship_out) {
                 std::string pcd_name = pcd_dir + "/lidarA_split_frame_" + std::to_string(ts) + ".pcd";
                 pcl::io::savePCDFileBinary(pcd_name, *ship_out);
-                Logger::instance().info("[INFO] Save split frame to: " + pcd_name);
+                log_msg = "Save split frame to: " + pcd_name;
+                LOG_INFO("ACQUIRER", log_msg);
             }
         }
 
@@ -233,8 +236,8 @@ void PointCloudAcquirer::acquireRadar1Loop() {
 
         this_thread::sleep_for(milliseconds(DELAY_GET_LIDAR));
     }
-
-    Logger::instance().info(lidarCfg_.lidarA.name + " exit, ip:" + lidarCfg_.lidarA.lidar_ip);
+    std::string exit_msg = "雷达A线程退出，name:" + lidarCfg_.lidarA.name + ",ip:" + lidarCfg_.lidarA.lidar_ip;
+    LOG_INFO("ACQUIRER", exit_msg);
 
     if (LidarDataA) {
     	delete LidarDataA;
@@ -255,14 +258,14 @@ void PointCloudAcquirer::acquireRadar2Loop() {
        << ",save:" << lidarCfg_.debug_save;
     std::string dev_info = ss.str();
 
-    Logger::instance().info(dev_info);
+    LOG_INFO("ACQUIRER", dev_info);
     GetLidarData* LidarDataB = new GetLidarData_LS();
     LidarDataB->setPortAndIP(lidarCfg_.lidarB.dev_port, lidarCfg_.lidarB.data_port, lidarCfg_.lidarB.local_ip);
     LidarDataB->LidarStart();
 
     if (lidarCfg_.ship_monitor) {
         if (!initLidarBgProcessor(bg_b_proc_, 1)) {
-            Logger::instance().error("雷达B背景差分初始化失败，船舶监测关闭");
+            LOG_ERROR("ACQUIRER", "雷达B背景差分初始化失败，船舶监测关闭");
             lidarCfg_.ship_monitor = 0; 
         } 
     }
@@ -307,16 +310,18 @@ void PointCloudAcquirer::acquireRadar2Loop() {
             ship_out.reset(new PointCloudT); // 仅开启船舶监测才分配内存
             ship_out->reserve(cloud->size());
             ShipMonitorResult ship_status = processOneLidarFrame(bg_b_proc_, cloud, ship_out);
+            std::string log_msg;
             if (ship_status.status == ShipMonitorStatus::SHIP_LEAVE) {
-                Logger::instance().info("[B] Ship left, points: " + std::to_string(ship_status.ship_point_count));
+                log_msg = "[B] Ship left, points: " + std::to_string(ship_status.ship_point_count);
+                LOG_INFO("ACQUIRER", log_msg);
                 continue;
             } else if (ship_status.status == ShipMonitorStatus::SHIP_MOVING) {
-                Logger::instance().info("[B] Ship moving, center_x: " + std::to_string(ship_status.pose.center_x) +
-                                        ", center_y: " + std::to_string(ship_status.pose.center_y));
+                log_msg = "[B] Ship moving, center_x: " + std::to_string(ship_status.pose.center_x) + ", center_y: " + std::to_string(ship_status.pose.center_y);
+                LOG_INFO("ACQUIRER", log_msg);
                 continue;
             } else if (ship_status.status == ShipMonitorStatus::SHIP_STABLE) {
-                Logger::instance().info("[B] Ship stable, center_x: " + std::to_string(ship_status.pose.center_x) +
-                                        ", center_y: " + std::to_string(ship_status.pose.center_y));
+                log_msg = "[B] Ship stable, center_x: " + std::to_string(ship_status.pose.center_x) + ", center_y: " + std::to_string(ship_status.pose.center_y);
+                LOG_INFO("ACQUIRER", log_msg);
             }
         }
 
@@ -327,12 +332,14 @@ void PointCloudAcquirer::acquireRadar2Loop() {
 
             std::string pcd_name = pcd_dir + "/lidarB_single_frame_" + std::to_string(ts) + ".pcd";
             pcl::io::savePCDFileBinary(pcd_name, *cloud);
-            Logger::instance().info("[INFO] Save one frame to: " + pcd_name);
+            std::string log_msg = "Save one frame to: " + pcd_name;
+            LOG_INFO("ACQUIRER", log_msg);
 
             if (lidarCfg_.ship_monitor && ship_out) {
                 pcd_name = pcd_dir + "/lidarB_split_frame_" + std::to_string(ts) + ".pcd";
                 pcl::io::savePCDFileBinary(pcd_name, *ship_out);
-                Logger::instance().info("[INFO] Save split frame to: " + pcd_name);
+                log_msg = "Save split frame to: " + pcd_name;
+                LOG_INFO("ACQUIRER", log_msg);
             }
         }
 
@@ -352,7 +359,8 @@ void PointCloudAcquirer::acquireRadar2Loop() {
         this_thread::sleep_for(milliseconds(DELAY_GET_LIDAR));
     }
 
-    Logger::instance().info(lidarCfg_.lidarB.name + " exit, ip:" + lidarCfg_.lidarB.lidar_ip);
+    std::string exit_msg = "雷达B线程退出，name:" + lidarCfg_.lidarB.name + ",ip:" + lidarCfg_.lidarB.lidar_ip;
+    LOG_INFO("ACQUIRER", exit_msg);
 
     if (LidarDataB) {
     	delete LidarDataB;

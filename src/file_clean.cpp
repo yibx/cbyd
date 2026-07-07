@@ -14,7 +14,7 @@ void CleanOldPcdLinux(const std::string& dir, int keep_sec)
     DIR* dp = opendir(dir.c_str());
     if (nullptr == dp)
     {
-        Logger::instance().warn("[CLEAN] open dir failed: " + dir + ", err:" + std::string(strerror(errno)));
+        LOG_WARN("CLEAN", "open dir failed: {}, err: {}", dir, strerror(errno));
         return;
     }
 
@@ -41,7 +41,7 @@ void CleanOldPcdLinux(const std::string& dir, int keep_sec)
         struct stat st;
         if (stat(full_path.c_str(), &st) != 0)
         {
-            Logger::instance().warn("[CLEAN] stat file fail: " + full_path);
+            LOG_WARN("CLEAN", "[CLEAN] stat file fail: {}, err: {}", full_path, strerror(errno));
             continue;
         }
         // 跳过文件夹，只处理普通文件
@@ -55,11 +55,11 @@ void CleanOldPcdLinux(const std::string& dir, int keep_sec)
         {
             if (remove(full_path.c_str()) == 0)
             {
-                Logger::instance().info("[CLEAN] remove expired pcd: " + full_path);
+                LOG_INFO("CLEAN", "[CLEAN] remove expired pcd: {}", full_path);
             }
             else
             {
-                Logger::instance().warn("[CLEAN] delete fail: " + full_path + ", err:" + std::string(strerror(errno)));
+                LOG_WARN("CLEAN", "[CLEAN] delete fail: {}, err: {}", dir, strerror(errno));
             }
         }
     }
@@ -74,6 +74,6 @@ bool MakeDirLinux(const std::string& path)
     // 目录已存在不算错误
     if (errno == EEXIST)
         return true;
-    Logger::instance().warn("[DIR] create fail: " + path);
+    LOG_WARN("DIR", "create fail: {}, err: {}", path, strerror(errno));
     return false;
 }

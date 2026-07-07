@@ -29,13 +29,13 @@ void PointCloudFuser::start() {
 
     if (!loadLidarConfigs("../dev_config.yaml", lidarCfg_)){
         std::string err_msg = "雷达配置加载失败，请检查dev_config.yaml文件";
-        Logger::instance().info(err_msg);
+        LOG_ERROR("FUSE", err_msg);
         return;
     }
 
     if (!loadMonitorConfig("../monitor_config.yaml", fuse_cfg_)) {
         std::string err_msg = "监测配置加载失败，请检查monitor_config.yaml文件";
-        Logger::instance().info(err_msg);
+        LOG_ERROR("FUSE", err_msg);
         return;
     }
 
@@ -71,7 +71,7 @@ void PointCloudFuser::fuseLoop() {
             while (cacheA_.size() > MAX_CACHE_FRAME) {
                 cacheA_.erase(cacheA_.begin());
                 err_msg = "雷达A数据缓存超限，丢弃旧帧";
-                Logger::instance().info(err_msg);
+                LOG_WARN("FUSE", err_msg);
             }
         }
 
@@ -82,7 +82,7 @@ void PointCloudFuser::fuseLoop() {
             while (cacheB_.size() > MAX_CACHE_FRAME) {
                 cacheB_.erase(cacheB_.begin());
                 err_msg = "雷达B数据缓存超限，丢弃旧帧";
-                Logger::instance().info(err_msg);
+                LOG_WARN("FUSE", err_msg);
             }
         }
 
@@ -128,7 +128,7 @@ void PointCloudFuser::fuseLoop() {
             }   else if (a.timestamp < b.timestamp) {
                 cacheA_.erase(cacheA_.begin());
                 err_msg = "雷达A数据超时，丢弃旧帧";
-                Logger::instance().info(err_msg);
+                LOG_WARN("FUSE", err_msg);
                 SM::instance().reportError(
                     ModuleType::FUSER,
                     ErrorLevel::STATUS_WARNING,
@@ -137,7 +137,7 @@ void PointCloudFuser::fuseLoop() {
             }   else {
                 cacheB_.erase(cacheB_.begin());
                 err_msg = "雷达B数据超时，丢弃旧帧";
-                Logger::instance().info(err_msg);
+                LOG_WARN("FUSE", err_msg);
                 SM::instance().reportError(
                     ModuleType::FUSER,
                     ErrorLevel::STATUS_WARNING,
@@ -215,7 +215,8 @@ FusedPointCloud PointCloudFuser::fuse(const RawPointCloud& lidarA,
         const std::string pcd_dir = "./pcd_debug";
         std::string pcd_name = pcd_dir + "/lidar_fuse_frame_" + std::to_string(fused_res.timestamp) + ".pcd";
         pcl::io::savePCDFileBinary(pcd_name, *fused_res.cloud);
-        Logger::instance().info("[INFO] Save fused frame to: " + pcd_name);
+        std::string log_msg = "Save fused frame to: " + pcd_name;
+        LOG_INFO("FUSE", log_msg);
     }
 
     return fused_res;

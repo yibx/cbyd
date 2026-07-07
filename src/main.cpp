@@ -6,7 +6,7 @@
 #include <signal.h>
 #include <atomic>
 #include <Logger.h>
-
+#include "version.h"
 // 全局原子标志，用于信号处理
 std::atomic<bool> running{true};
 
@@ -16,11 +16,25 @@ void sigint_handler(int sig) {
     std::cout << "\nReceived Ctrl+C, stopping threads..." << std::endl;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    // 查询版本指令：./cbyd --version
+    if (argc >= 2 && std::string(argv[1]) == "--version")
+    {
+        std::cout << "Software Version: " << SW_VERSION_STR << std::endl;
+        std::cout << "Build Time: " << SW_BUILD_TIME << std::endl;
+        return 0;
+    }
     // 注册信号处理
     signal(SIGINT, sigint_handler);
+    // 初始化日志
+    IndustrialLogger::Instance()->Init("./logs/app", 10*1024*1024, 30, 8192);
+    IndustrialLogger::Instance()->SetLogLevel(spdlog::level::debug);
 
-    Logger::instance().info("start service");
+    std::string ver = std::string("Software Version: ") + SW_VERSION_STR;
+    LOG_INFO("MAIN", ver);
+
+    std::string build_time = std::string("Build Time: ") + SW_BUILD_TIME;
+    LOG_INFO("MAIN", build_time);
 
     LockFreeRingQueue<RawPointCloud> rq_cloudA(100);
     LockFreeRingQueue<RawPointCloud> rq_cloudB(100);
@@ -48,6 +62,10 @@ int main() {
     fuser.stop();
     acquirer.stop();
 
-    std::cout << "All threads stopped, exiting." << std::endl;
+    IndustrialLogger::Instance()->Flush();
+    IndustrialLogger::Instance()->Shutdown();
+
+    LOG_INFO("MAIN", "All threads stopped, exiting");
+
     return 0;
 }

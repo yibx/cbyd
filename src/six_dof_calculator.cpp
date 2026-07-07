@@ -56,21 +56,22 @@ SixDofCalculator::SixDofCalculator(LockFreeRingQueue<FusedPointCloud>* rq_fuse, 
 
     if (!loadLidarConfigs("../dev_config.yaml", lidarCfg_)){
         std::string err_msg = "雷达配置加载失败，请检查dev_config.yaml文件";
-        Logger::instance().info(err_msg);
+        LOG_ERROR("SIX_DOF_CALCULATOR", err_msg);
         return;
     }
 
     if (!loadRegParam("../reg_config.yaml", regCfg_)){
         std::string err_msg = "算法配置加载失败，请检查reg_config.yaml文件";
-        Logger::instance().info(err_msg);
+        LOG_ERROR("SIX_DOF_CALCULATOR", err_msg);
         return;
     }
     if (!loadMonitorConfig("../monitor_config.yaml", monitor_cfg_)) {
         std::string err_msg = "监测配置加载失败，请检查monitor_config.yaml文件";
-        Logger::instance().info(err_msg);
+        LOG_ERROR("SIX_DOF_CALCULATOR", err_msg);
         return;
     }
     if (lidarCfg_.debug_save) {
+        LOG_DEBUG("SIX_DOF_CALCULATOR", "调试保存功能已启用");
         initFusionCsv();
     }
 
@@ -156,7 +157,7 @@ void SixDofCalculator::calcLoop() {
                     }
 		    	    if (retry >= MAX_RETRY_QUEUE) {
                         std::string err_msg = "六自由度结果入队失败，可能导致监测数据丢失" + to_string(MAX_RETRY_QUEUE) + "次";
-                        Logger::instance().info(err_msg);
+                        LOG_ERROR("SIX_DOF_CALCULATOR", err_msg);
 		    	    }
                 });
                 cv_.notify_one();
@@ -345,7 +346,7 @@ Eigen::Matrix4f fineRegistrationGICP(PointCloudT::Ptr& src, PointCloudT::Ptr& ds
     // 配准不佳，保留上一帧姿态
     if (!converged || fitness > gicp_param.fit_thresh) {
         std::string err_msg = "位姿解算失败，保持上一帧结果";
-        Logger::instance().info(err_msg);
+        LOG_DEBUG("SIX_DOF_CALCULATOR", err_msg);
         return init_trans;
     }
 
@@ -365,7 +366,8 @@ void SixDofCalculator::initFusionCsv() {
     fusion_csv_.open(csv_path, std::ios::out | std::ios::app);
     if (!fusion_csv_.is_open())
     {
-        Logger::instance().error("无法打开船舶运动数据CSV文件：" + csv_path);
+        std::string err_msg = "无法打开船舶运动数据CSV文件：" + csv_path;
+        LOG_ERROR("SIX_DOF_CALCULATOR", err_msg);
         return;
     }
 
@@ -431,7 +433,7 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
         last_base_update_tp_ = now_tp;
         r.confidence = 1.00f;
         std::string log_msg = "更新基准帧，间隔=" + to_string(interval_min) + "秒钟";
-        Logger::instance().info(log_msg);
+        LOG_INFO("SIX_DOF_CALCULATOR", log_msg);
 
         if(!base_extremum_calc_) {
             PointCloudT::Ptr base_cloud = fuse_pc_base_.cloud;
@@ -456,7 +458,8 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
                 base_min_x_body_ = minXb;
                 base_max_x_body_ = maxXb;
                 base_extremum_calc_ = true;
-                Logger::instance().info("基准船体X范围 min:" + std::to_string(minXb) + " max:" + std::to_string(maxXb));
+                log_msg = "基准船体X范围 min:" + std::to_string(minXb) + ", max:" + std::to_string(maxXb);
+                LOG_INFO("SIX_DOF_CALCULATOR", log_msg);
             }
         }
     }
@@ -494,7 +497,7 @@ SixDofResult SixDofCalculator::calculateSixDof(const FusedPointCloud& c) {
         T_ship_dock = T_A2dock_ * T_local * T_A2dock_inv;
     } else {
         std::string err_msg = "未知雷达ID: " + c.lidar_id;
-        Logger::instance().info(err_msg);
+        LOG_ERROR("SIX_DOF_CALCULATOR", err_msg);
         return r;
     }
 

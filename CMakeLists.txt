@@ -11,13 +11,13 @@ set(CMAKE_BUILD_TYPE "Debug")
 
 find_package(PCL 1.13.0 REQUIRED)
 find_package(Eigen3 REQUIRED)
-include_directories(${PCL_INCLUDE_DIRS}  ./include  ./third-party/libhv/include ./include/LSSDK/Include ./third-party/yaml/include ./third-party/libhv/include ./third-party/rapidjson/include)
+include_directories(${PCL_INCLUDE_DIRS}  ./include  ./third-party/libhv/include ./include/LSSDK/Include ./third-party/yaml/include ./third-party/libhv/include ./third-party/rapidjson/include ./third-party/spdlog/include)
 link_directories(${PCL_LIBRARY_DIRS} ./lib ./third-party/yaml/lib ./third-party/libhv/lib)
 add_definitions(${PCL_DEFINITIONS})
 #add_library(test_pcl $(./LSSDK))
 
 add_executable(cbyd ./src/main.cpp ./src/point_cloud_acquirer.cpp ./src/point_cloud_fuser.cpp
-./src/six_dof_calculator.cpp ./src/data_outputter.cpp ./src/system_state_manager.cpp ./src/wharf_dock_checker.cpp ./src/Logger.cpp ./src/easylogging++.cc ./src/config_loader.cpp ./src/lidar_bg_diff.cpp ./src/industrial_mqtt_client.cpp ./src/file_clean.cpp)
+./src/six_dof_calculator.cpp ./src/data_outputter.cpp ./src/system_state_manager.cpp ./src/wharf_dock_checker.cpp ./src/Logger.cpp ./src/config_loader.cpp ./src/lidar_bg_diff.cpp ./src/industrial_mqtt_client.cpp ./src/file_clean.cpp)
  
 target_link_libraries (cbyd ${PCL_LIBRARIES} yaml-cpp pthread hv)
  
