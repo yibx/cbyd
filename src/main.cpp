@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
     // 注册信号处理
     signal(SIGINT, sigint_handler);
     // 初始化日志
-    IndustrialLogger::Instance()->Init("./logs/app", 10*1024*1024, 30, 8192);
+    IndustrialLogger::Instance()->Init("./logs/app", 5*1024*1024, 5, 8192);
     IndustrialLogger::Instance()->SetLogLevel(spdlog::level::debug);
 
     std::string ver = std::string("Software Version: ") + SW_VERSION_STR;

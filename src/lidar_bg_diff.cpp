@@ -13,51 +13,51 @@ static pcl::VoxelGrid<PointT> g_voxel_filter;
 constexpr float VOXEL_RES = 0.02f;
 
 LidarBgDiff::LidarBgDiff()
-    : m_dist_thresh(0.15)
-    , m_bg_ready(false)
+    : dist_thresh_(0.15)
+    , bg_ready_(false)
 {
-    m_bg_cloud.reset(new PointCloudT);
+    bg_cloud_.reset(new PointCloudT);
     // 预设置体素栅格参数，一次初始化永久复用
     g_voxel_filter.setLeafSize(VOXEL_RES, VOXEL_RES, VOXEL_RES);
 }
 
 void LidarBgDiff::setDistanceThreshold(double dist_thresh)
 {
-    m_dist_thresh = dist_thresh;
+    dist_thresh_ = dist_thresh;
 }
 
 bool LidarBgDiff::loadBackground(const std::string& bg_pcd_path)
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
-    if (pcl::io::loadPCDFile<PointT>(bg_pcd_path, *m_bg_cloud) < 0)
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (pcl::io::loadPCDFile<PointT>(bg_pcd_path, *bg_cloud_) < 0)
     {
         std::cerr << "[ERROR] Load background pcd failed: " << bg_pcd_path << std::endl;
-        m_bg_ready = false;
+        bg_ready_ = false;
         return false;
     }
-    m_bg_kdtree.setInputCloud(m_bg_cloud);
-    m_bg_ready = true;
-    // std::cout << "[INFO] Background loaded, points: " << m_bg_cloud->size() << std::endl;
+    bg_kdtree_.setInputCloud(bg_cloud_);
+    bg_ready_ = true;
+    // std::cout << "[INFO] Background loaded, points: " << bg_cloud_->size() << std::endl;
     return true;
 }
 
 void LidarBgDiff::setBackground(PointCloudPtr bg_cloud)
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
+    std::lock_guard<std::mutex> lock(mtx_);
     if (!bg_cloud || bg_cloud->empty())
     {
-        m_bg_ready = false;
+        bg_ready_ = false;
         return;
     }
-    m_bg_cloud = bg_cloud;
-    m_bg_kdtree.setInputCloud(m_bg_cloud);
-    m_bg_ready = true;
+    bg_cloud_ = bg_cloud;
+    bg_kdtree_.setInputCloud(bg_cloud_);
+    bg_ready_ = true;
 }
 
 void LidarBgDiff::extractForeground(PointCloudPtr in_cloud, PointCloudPtr out_cloud)
 {
     out_cloud->clear();
-    if (!m_bg_ready || !in_cloud || in_cloud->empty() || !out_cloud)
+    if (!bg_ready_ || !in_cloud || in_cloud->empty() || !out_cloud)
     {
         return;
     }
@@ -70,12 +70,12 @@ void LidarBgDiff::extractForeground(PointCloudPtr in_cloud, PointCloudPtr out_cl
 
     std::vector<int> nn_indices(1);
     std::vector<float> nn_dists(1);
-    const double dist_sq_thresh = m_dist_thresh * m_dist_thresh; // 预计算距离平方，省去sqrt
+    const double dist_sq_thresh = dist_thresh_ * dist_thresh_; // 预计算距离平方，省去sqrt
 
     // 优化2：直接比对距离平方，删除sqrt冗余计算
     for (const auto& pt : *down_cloud)
     {
-        m_bg_kdtree.nearestKSearch(pt, 1, nn_indices, nn_dists);
+        bg_kdtree_.nearestKSearch(pt, 1, nn_indices, nn_dists);
         if (nn_dists[0] > dist_sq_thresh)
         {
             out_cloud->push_back(pt);
@@ -176,30 +176,30 @@ ShipMove LidarBgDiff::process(PointCloudPtr raw_cloud, PointCloudPtr ship_cloud,
 // ===================== 新增：监测参数配置实现 =====================
 void LidarBgDiff::setStableFrameCount(int frame_cnt)
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
-    m_stable_frame_cnt = frame_cnt;
+    std::lock_guard<std::mutex> lock(mtx_);
+    stable_frame_cnt_ = frame_cnt;
 }
 
 void LidarBgDiff::setStableDistThreshold(double dist_m)
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
-    m_stable_dist_thresh = dist_m;
+    std::lock_guard<std::mutex> lock(mtx_);
+    stable_dist_thresh_ = dist_m;
 }
 
 void LidarBgDiff::setMinValidShipPoints(int min_pts)
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
-    m_min_valid_ship_pts = min_pts;
+    std::lock_guard<std::mutex> lock(mtx_);
+    min_valid_ship_pts_ = min_pts;
 }
 
 // ===================== 新增：核心状态判定逻辑 =====================
 ShipMonitorStatus LidarBgDiff::judgeShipStatus(const ShipMove& cur_pose, int ship_pts)
 {
-    std::lock_guard<std::mutex> lock(m_mtx);
+    std::lock_guard<std::mutex> lock(mtx_);
     // 条件1：无船舶/点数不足 → 判定离开
-    if (!cur_pose.has_ship || ship_pts < m_min_valid_ship_pts)
+    if (!cur_pose.has_ship || ship_pts < min_valid_ship_pts_)
     {
-        m_center_history.clear(); // 清空历史缓存
+        center_history_.clear(); // 清空历史缓存
         return ShipMonitorStatus::SHIP_LEAVE;
     }
 
@@ -208,28 +208,28 @@ ShipMonitorStatus LidarBgDiff::judgeShipStatus(const ShipMove& cur_pose, int shi
     rec.cx = cur_pose.center_x;
     rec.cy = cur_pose.center_y;
     rec.cz = cur_pose.center_z;
-    m_center_history.push_back(rec);
+    center_history_.push_back(rec);
 
     // 维持历史队列长度，超过稳定帧数则弹出最早帧
-    if (m_center_history.size() > (size_t)m_stable_frame_cnt)
+    if (center_history_.size() > (size_t)stable_frame_cnt_)
     {
-        m_center_history.erase(m_center_history.begin());
+        center_history_.erase(center_history_.begin());
     }
 
     // 帧数不足稳定判定阈值 → 判定移动
-    if (m_center_history.size() < (size_t)m_stable_frame_cnt)
+    if (center_history_.size() < (size_t)stable_frame_cnt_)
     {
         return ShipMonitorStatus::SHIP_MOVING;
     }
 
     // 计算当前帧与最早一帧的三维位移距离
-    const auto& first = m_center_history.front();
+    const auto& first = center_history_.front();
     double dx = rec.cx - first.cx;
     double dy = rec.cy - first.cy;
     double dz = rec.cz - first.cz;
     double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 
-    if (dist < m_stable_dist_thresh)
+    if (dist < stable_dist_thresh_)
     {
         return ShipMonitorStatus::SHIP_STABLE;
     }

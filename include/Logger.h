@@ -5,10 +5,14 @@
 #include <spdlog/async.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/daily_file_sink.h>
+// 新增：滚动分割头文件
+#include <spdlog/sinks/rotating_file_sink.h>
 
 #include <memory>
 #include <string>
 #include <vector>
+#include <ctime>
+#include <chrono>
 
 class IndustrialLogger
 {
@@ -28,7 +32,6 @@ public:
     std::shared_ptr<spdlog::logger> GetLogger() { return logger_; }
     static std::string GetShortFileName(const char* fullPath);
 
-    // 模板：格式化字符串 + 可变参数
     template<typename... Args>
     void LogTrace(const std::string& mod, const char* file, int line, const char* fmt, Args&&... args)
     {
@@ -36,7 +39,6 @@ public:
         std::string f = GetShortFileName(file);
         logger_->trace("[{}] {}:{} | {}", mod, f.c_str(), line, fmt, std::forward<Args>(args)...);
     }
-    // 重载：直接传入std::string消息
     void LogTrace(const std::string& mod, const char* file, int line, const std::string& msg)
     {
         if (!logger_) return;
@@ -120,12 +122,27 @@ private:
     IndustrialLogger(const IndustrialLogger&) = delete;
     IndustrialLogger& operator=(const IndustrialLogger&) = delete;
 
+    // 新增私有工具函数
+    std::string GetTodayDate();
+    void RebuildDailyRotateSink();
+
     static IndustrialLogger* instance_;
     std::shared_ptr<spdlog::logger> logger_;
     bool consoleEnable_;
+
+    // 持久化初始化参数
+    std::string baseLogPrefix_;
+    size_t maxFileSize_;
+    size_t maxBackup_;
+    size_t asyncQueueSize_;
+
+    // 日期缓存 & 文件输出sink
+    std::string todayStr_;
+    std::shared_ptr<spdlog::sinks::rotating_file_sink_mt> fileSink_;
+    std::shared_ptr<spdlog::sinks::stdout_color_sink_mt> consoleSink_;
 };
 
-// 日志宏，自动注入文件、行号，可变参数透传
+// 日志宏完全保留不变
 #define LOG_TRACE(mod, ...) IndustrialLogger::Instance()->LogTrace(mod, __FILE__, __LINE__, ##__VA_ARGS__)
 #define LOG_DEBUG(mod, ...) IndustrialLogger::Instance()->LogDebug(mod, __FILE__, __LINE__, ##__VA_ARGS__)
 #define LOG_INFO(mod, ...)  IndustrialLogger::Instance()->LogInfo(mod, __FILE__, __LINE__, ##__VA_ARGS__)

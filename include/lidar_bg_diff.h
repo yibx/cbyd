@@ -87,19 +87,18 @@ private:
 
 private:
     // 原有成员
-    double m_dist_thresh;
-    PointCloudPtr m_bg_cloud;
-    pcl::KdTreeFLANN<PointT> m_bg_kdtree;
-    bool m_bg_ready;
+    double dist_thresh_;
+    PointCloudPtr bg_cloud_;
+    pcl::KdTreeFLANN<PointT> bg_kdtree_;
+    bool bg_ready_;
 
-    // ===================== 新增监测私有成员 =====================
-    std::mutex m_mtx; // 多线程保护历史缓存
-    std::vector<ShipCenterRecord> m_center_history; // 历史船舶中心序列
+    std::mutex mtx_; // 多线程保护历史缓存
+    std::vector<ShipCenterRecord> center_history_; // 历史船舶中心序列
 
     // 停稳判定参数
-    int m_stable_frame_cnt = 10;    // 连续10帧不动判定停稳
-    double m_stable_dist_thresh = 0.4; // 位移小于0.4m视为静止
-    int m_min_valid_ship_pts = 150;   // 小于该点数判定无船
+    int stable_frame_cnt_ = 10;    // 连续10帧不动判定停稳
+    double stable_dist_thresh_ = 0.4; // 位移小于0.4m视为静止
+    int min_valid_ship_pts_ = 150;   // 小于该点数判定无船
 };
 
 #endif // LIDAR_BG_DIFF_H
